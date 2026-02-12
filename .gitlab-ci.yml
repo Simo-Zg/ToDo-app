@@ -14,7 +14,7 @@ build-job:
   image: node:20-alpine
   script: 
     - echo "Installation des dépendances..."
-    - npm ci
+    - npm install
     - echo "Vérification que le code n'a pas d'erreurs de syntaxe..."
     - node -c app.js
     - echo "Build terminé avec succès!"
