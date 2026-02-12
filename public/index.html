@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tasks</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="container topbar__inner">
+      <div class="brand">
+        <div class="brand__mark" aria-hidden="true">✓</div>
+        <div>
+          <div class="brand__title">Tasks</div>
+          <div class="brand__subtitle">Simple task manager</div>
+        </div>
+      </div>
+
+      <div class="topbar__actions">
+        <button id="refreshBtn" class="btn btn--ghost" type="button">Refresh</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container page">
+    <section class="panel">
+      <div class="panel__header">
+        <h1 class="panel__title">Add a task</h1>
+        <p class="panel__hint">Title and content are required.</p>
+      </div>
+
+      <form id="taskForm" class="form" autocomplete="off">
+        <label class="field">
+          <span class="field__label">Title</span>
+          <input id="title" class="input" type="text" placeholder="e.g., Workout at ..." maxlength="80" required />
+        </label>
+
+        <label class="field">
+          <span class="field__label">Content</span>
+          <textarea id="content" class="textarea" placeholder="Go to the gym with .... then ...." rows="4" maxlength="600" required></textarea>
+        </label>
+
+        <div class="form__actions">
+          <button class="btn btn--primary" type="submit">Add Task</button>
+          <button id="clearBtn" class="btn btn--ghost" type="button">Clear</button>
+        </div>
+
+        <div class="status" role="status" aria-live="polite">
+          <span id="statusMsg"></span>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel">
+      <div class="panel__header panel__header--row">
+        <div>
+          <h2 class="panel__title">Your tasks</h2>
+          <p class="panel__hint"><span id="count">0</span> total</p>
+        </div>
+
+        <div class="filters">
+          <div class="search">
+            <input id="search" class="input input--search" type="search" placeholder="Search tasks..." autocomplete="off" />
+          </div>
+          <select id="sort" class="select" aria-label="Sort">
+            <option value="newest">Newest</option>
+            <option value="oldest">Oldest</option>
+            <option value="az">A → Z</option>
+            <option value="za">Z → A</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="tasks" class="cards" aria-live="polite"></div>
+
+      <div id="empty" class="empty" hidden>
+        <div class="empty__icon" aria-hidden="true">🗒️</div>
+        <div class="empty__title">No tasks yet</div>
+        <div class="empty__hint">Add your first task above.</div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer__inner">
+      <span>Built with Express + JSON file storage</span>
+      <span class="dot" aria-hidden="true">•</span>
+      <span>UI: cards list</span>
+    </div>
+  </footer>
+
+  <script src="app.js" defer></script>
+</body>
+</html>
