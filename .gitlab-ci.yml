@@ -34,7 +34,9 @@ test-job:
 
 security-secrets-scan:
   stage: security
-  image: zricethezav/gitleaks:latest
+  image:
+    name: zricethezav/gitleaks:latest
+    entrypoint: [""]
   script:
     - echo "Recherche de secrets dans le code..."
     - gitleaks detect --source=.  --verbose --no-git
