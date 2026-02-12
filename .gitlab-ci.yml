@@ -57,14 +57,21 @@ package-docker:
   image: docker:latest
   services:
     - docker:dind
+  variables:
+    DOCKER_TLS_CERTDIR: ""
   script:
-    - echo "Construction de l'image Docker..."
-    - docker build -t $APP_NAME:$APP_VERSION .
-    - docker build -t $APP_NAME:latest .
-    - echo "Image Docker créée avec succès!"
-    - docker images
-  only: 
-  - main
+    - echo "Login au registry GitLab..."
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+
+    - echo "Build et tag..."
+    - docker build -t "$CI_REGISTRY_IMAGE:$APP_VERSION" .
+    - docker tag "$CI_REGISTRY_IMAGE:$APP_VERSION" "$CI_REGISTRY_IMAGE:latest"
+
+    - echo "Push..."
+    - docker push "$CI_REGISTRY_IMAGE:$APP_VERSION"
+    - docker push "$CI_REGISTRY_IMAGE:latest"
+  only:
+    - main
 
 deploy-staging:
   stage: deploy
@@ -72,6 +79,7 @@ deploy-staging:
   services:
     - docker:dind
   script:
+    - docker pull $APP_NAME:$APP_VERSION
     - echo "Déploiement en environnement de staging..."
     - echo "Arrêt de l'ancienne version si elle existe..."
     - docker stop todo-app-staging || true
@@ -90,6 +98,7 @@ deploy-production:
   services: 
     - docker:dind
   script:
+    - docker pull $APP_NAME:$APP_VERSION
     - echo "Déploiement en PRODUCTION..."
     - echo "Arrêt de l'ancienne version..."
     - docker stop todo-app-prod || true
