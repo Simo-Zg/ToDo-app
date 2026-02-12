@@ -78,34 +78,49 @@ deploy-staging:
   image: docker:latest
   services:
     - docker:dind
+  variables:
+    DOCKER_TLS_CERTDIR: ""
+  before_script:
+    - echo "Login au registry GitLab..."
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
   script:
-    - docker pull $APP_NAME:$APP_VERSION
+    - echo "Pull de l'image depuis GitLab Registry..."
+    - docker pull "$CI_REGISTRY_IMAGE:$APP_VERSION"
+
     - echo "Déploiement en environnement de staging..."
-    - echo "Arrêt de l'ancienne version si elle existe..."
     - docker stop todo-app-staging || true
     - docker rm todo-app-staging || true
+
     - echo "Démarrage de la nouvelle version..."
-    - docker run -d --name todo-app-staging -p 5000:5000 $APP_NAME:$APP_VERSION
-    - echo "Application déployée sur staging!"
+    - docker run -d --name todo-app-staging -p 5000:5000 "$CI_REGISTRY_IMAGE:$APP_VERSION"
+
   environment:
     name: staging
-  only: 
+  only:
     - main
+
 
 deploy-production:
   stage: deploy
   image: docker:latest
-  services: 
+  services:
     - docker:dind
+  variables:
+    DOCKER_TLS_CERTDIR: ""
+  before_script:
+    - echo "Login au registry GitLab..."
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
   script:
-    - docker pull $APP_NAME:$APP_VERSION
+    - echo "Pull de l'image depuis GitLab Registry..."
+    - docker pull "$CI_REGISTRY_IMAGE:$APP_VERSION"
+
     - echo "Déploiement en PRODUCTION..."
-    - echo "Arrêt de l'ancienne version..."
     - docker stop todo-app-prod || true
     - docker rm todo-app-prod || true
+
     - echo "Démarrage de la nouvelle version..."
-    - docker run -d --name todo-app-prod -p 5000:5000 $APP_NAME:$APP_VERSION
-    - echo "Application déployée en PRODUCTION!"
+    - docker run -d --name todo-app-prod -p 5000:5000 "$CI_REGISTRY_IMAGE:$APP_VERSION"
+
   environment:
     name: production
   when: manual
