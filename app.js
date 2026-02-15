@@ -9,8 +9,6 @@ const DB_PATH = path.join(__dirname, "DB", "Tasks.json");
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
-/* ---------- Helpers ---------- */
-
 async function getAllTasks() {
   const data = await fs.readFile(DB_PATH, "utf-8");
   return JSON.parse(data || "[]");
@@ -19,8 +17,6 @@ async function getAllTasks() {
 async function saveTasks(tasks) {
   await fs.writeFile(DB_PATH, JSON.stringify(tasks, null, 2));
 }
-
-/* ---------- Routes ---------- */
 
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
