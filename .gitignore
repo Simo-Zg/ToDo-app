@@ -1,2 +1,12 @@
 node_modules/
-TreeFile.txt
+npm-debug.log*
+infra/.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+*.tfvars
+*.tfvars.json
+.terraformrc
+terraform.rc
+!**/.terraform.lock.hcl
