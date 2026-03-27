@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: todo-app
+  labels:
+    app: todo-app
+spec:
+  replicas: 3 # 3 pods as requested
+  selector:
+    matchLabels:
+      app: todo-app
+  template:
+    metadata:
+      labels:
+        app: todo-app
+    spec:
+      containers:
+        - name: todo-app
+          image: todo-app:latest # Local Docker image we will build
+          imagePullPolicy: IfNotPresent # Forces Kubernetes to use the locally built Windows/WSL2 image!
+          ports:
+            - containerPort: 5000
+          env:
+            - name: PORT
+              value: "5000"
+            - name: MONGO_DB_URI
+              value: "mongodb://mongodb-service:27017/todoapp"
+            - name: JWT_SECRET
+              value: "k8s-jwt-secret-testing"
+            - name: JWT_REFRESH_SECRET
+              value: "k8s-refresh-secret-testing"
+            - name: SECRET_PASSWORD
+              value: "adminpassword"
+            - name: AES_KEY
+              value: "e441bb92cd2147aecd04eb32ebbdd285a855427dce7e4367f08ff515324b1754" # A static 64-character hex key for AES encryption tests
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: todo-app-service
+spec:
+  selector:
+    app: todo-app
+  ports:
+    - protocol: TCP
+      port: 5000
+      targetPort: 5000
+  type: NodePort # Or LoadBalancer to expose externally on localhost

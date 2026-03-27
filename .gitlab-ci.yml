@@ -1,0 +1,128 @@
+stages:
+  - build
+  - test
+  - security
+  - package
+  - deploy
+
+variables:
+  APP_NAME: "todo-app"
+  APP_VERSION: "1.0.0"
+
+build-job:
+  stage: build
+  image: node:20-alpine
+  script: 
+    - echo "Installation des dépendances..."
+    - npm install
+    - echo "Vérification que le code n'a pas d'erreurs de syntaxe..."
+    - node -c server.js
+    - echo "Build terminé avec succès!"
+  artifacts: 
+    paths:
+      - node_modules/
+    expire_in:  1 hour
+
+test-job: 
+  stage: test
+  image: node:20-alpine
+  script:
+    - echo "Exécution des tests unitaires..."
+    - npm run test
+    - echo "Tous les tests sont passés!"
+  coverage:  '/All files[^|]*\|[^|]*\s+([\d\.]+)/'
+
+security-secrets-scan:
+  stage: security
+  image:
+    name: zricethezav/gitleaks:latest
+    entrypoint: [""]
+  script:
+    - echo "Recherche de secrets dans le code..."
+    - gitleaks detect --source=.  --verbose --no-git
+    - echo "Aucun secret détecté!"
+  allow_failure: false
+
+security-dependencies-scan:
+  stage: security
+  image: node:20-alpine
+  script:
+    - echo "Vérification des vulnérabilités dans les dépendances..."
+    - npm audit --audit-level=high
+    - echo "Aucune vulnérabilité critique détectée!"
+  allow_failure:  false
+
+package-docker:
+  stage: package
+  image: docker:latest
+  services:
+    - docker:dind
+  variables:
+    DOCKER_TLS_CERTDIR: ""
+  script:
+    - echo "Login au registry GitLab..."
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+
+    - echo "Build et tag..."
+    - docker build -t "$CI_REGISTRY_IMAGE:$APP_VERSION" .
+    - docker tag "$CI_REGISTRY_IMAGE:$APP_VERSION" "$CI_REGISTRY_IMAGE:latest"
+
+    - echo "Push..."
+    - docker push "$CI_REGISTRY_IMAGE:$APP_VERSION"
+    - docker push "$CI_REGISTRY_IMAGE:latest"
+  only:
+    - main
+
+deploy-staging:
+  stage: deploy
+  image: docker:latest
+  services:
+    - docker:dind
+  variables:
+    DOCKER_TLS_CERTDIR: ""
+  before_script:
+    - echo "Login au registry GitLab..."
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+  script:
+    - echo "Pull de l'image depuis GitLab Registry..."
+    - docker pull "$CI_REGISTRY_IMAGE:$APP_VERSION"
+
+    - echo "Déploiement en environnement de staging..."
+    - docker stop todo-app-staging || true
+    - docker rm todo-app-staging || true
+
+    - echo "Démarrage de la nouvelle version..."
+    - docker run -d --name todo-app-staging -p 5000:5000 "$CI_REGISTRY_IMAGE:$APP_VERSION"
+
+  environment:
+    name: staging
+  only:
+    - main
+
+
+deploy-production:
+  stage: deploy
+  image: docker:latest
+  services:
+    - docker:dind
+  variables:
+    DOCKER_TLS_CERTDIR: ""
+  before_script:
+    - echo "Login au registry GitLab..."
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+  script:
+    - echo "Pull de l'image depuis GitLab Registry..."
+    - docker pull "$CI_REGISTRY_IMAGE:$APP_VERSION"
+
+    - echo "Déploiement en PRODUCTION..."
+    - docker stop todo-app-prod || true
+    - docker rm todo-app-prod || true
+
+    - echo "Démarrage de la nouvelle version..."
+    - docker run -d --name todo-app-prod -p 5000:5000 "$CI_REGISTRY_IMAGE:$APP_VERSION"
+
+  environment:
+    name: production
+  when: manual
+  only:
+    - main

@@ -1,0 +1,9 @@
+PORT=3000 (example)
+SALTROUNDS=10 (example)
+JWT_SECRET="Change this secret"
+JWT_REFRESH_SECRET = "Change this refresh secret"
+SECRET_PASSWORD="Change This password"
+MONGO_DB_URI="Your Database URI"
+MONGO_HOST="Database Ip Address"
+MONGO_PORT="Database Port"
+MONGO_DB="Database Name"

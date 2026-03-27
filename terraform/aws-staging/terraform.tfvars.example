@@ -1,0 +1,10 @@
+
+aws_region      = "eu-west-3"
+aws_profile     = "default"           # <-- CHANGE if you use a named profile like "caller-root"
+project_name    = "Project-name"
+image           = "Image URI"
+container_port  = 3000
+desired_count = 1
+cpu          = 256
+memory       = 512
+healthcheck_path = "/health"
