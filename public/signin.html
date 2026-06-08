@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Sign In</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="./Style/index.css" />
+  <link rel="stylesheet" href="./Style/signin.css" />
+</head>
+<body>
+  <div class="glass-bg"></div>
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+
+  <main class="auth-page">
+    <div class="auth-wrap">
+      <section class="auth-side">
+        <div class="brand">
+          <div class="brand__mark">🚀</div>
+          <div>
+            <div class="brand__title">Tasks</div>
+            <div class="brand__subtitle">Simple task manager</div>
+          </div>
+        </div>
+
+        <div class="hero">
+          <h1>Welcome back.</h1>
+          <p>Sign in to access your workspace and continue managing your tasks.</p>
+
+          <div class="hero-cards">
+            <div class="hero-card">
+              <strong>Clean workflow</strong>
+              <span>Fast access to your tasks and actions.</span>
+            </div>
+            <div class="hero-card">
+              <strong>Protected session</strong>
+              <span>JWT auth with httpOnly cookies.</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel__header">
+          <h2 class="panel__title">Sign In</h2>
+          <p class="panel__hint">Use your existing account.</p>
+        </div>
+
+        <form id="signinForm" class="form" autocomplete="off">
+          <label class="field">
+            <span class="field__label">Username</span>
+            <input id="username" class="input" type="text" placeholder="Enter your username" required />
+          </label>
+
+          <label class="field">
+            <span class="field__label">Password</span>
+            <input id="password" class="input" type="password" placeholder="Enter your password" required />
+          </label>
+
+          <label class="field">
+            <span class="field__label">Role</span>
+            <select id="role" class="select" required>
+              <option value="User">User</option>
+              <option value="Admin">Admin</option>
+            </select>
+          </label>
+
+          <label id="secretField" class="field hidden">
+            <span class="field__label">Admin secret password</span>
+            <input id="secretPassword" class="input" type="password" placeholder="Enter admin secret password" />
+          </label>
+
+          <div class="form__actions">
+            <button class="btn btn--primary" type="submit">Sign In</button>
+            <a class="btn btn--ghost link-btn" href="/signup">Create account</a>
+          </div>
+
+          <div class="status" role="status" aria-live="polite">
+            <span id="statusMsg">Enter your credentials to sign in.</span>
+          </div>
+        </form>
+      </section>
+    </div>
+  </main>
+
+  <script src="./Scripts/signin.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>404 - Not Found</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="Style/index.css" />
+
+  <style>
+    .not-found {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 4rem 2rem;
+      min-height: 50vh;
+    }
+    .not-found h1 {
+      font-size: 8rem;
+      font-weight: 800;
+      margin: 0;
+      background: linear-gradient(135deg, #ff9ab0, #fcb69f);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      line-height: 1;
+    }
+    .not-found h2 {
+      font-size: 2rem;
+      margin: 1rem 0;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.95);
+    }
+    .not-found p {
+      font-size: 1.2rem;
+      margin: 1rem 0 2.5rem;
+      color: rgba(255, 255, 255, 0.75);
+      max-width: 500px;
+    }
+    .btn-large {
+      padding: 1rem 2rem;
+      font-size: 1.2rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="glass-bg"></div>
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+
+  <header class="topbar glass">
+    <div class="container topbar__inner">
+      <div class="brand">
+        <div class="brand__mark" aria-hidden="true">🚫</div>
+        <div>
+          <div class="brand__title">Error 404</div>
+          <div class="brand__subtitle">Page Not Found</div>
+        </div>
+      </div>
+      <div class="topbar__actions">
+        <a href="/" class="btn btn--ghost">Home</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="container page" style="display: flex; align-items: center; justify-content: center;">
+    <section class="panel glass-panel not-found w-100">
+      <h1>404</h1>
+      <h2>Lost in the void?</h2>
+      <p>The page or endpoint you are looking for doesn't exist, has been moved, or is temporarily unavailable.</p>
+      <a href="/" class="btn btn--primary btn-large">Go back to Home</a>
+    </section>
+  </main>
+</body>
+</html>

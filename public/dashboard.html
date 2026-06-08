@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Security Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="Style/index.css" />
+  <style>
+    .controls-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    .controls-left, .controls-right {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+    .pagination {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      margin-top: 1rem;
+      justify-content: center;
+    }
+    .table-checkbox {
+      width: 1.2rem;
+      height: 1.2rem;
+      cursor: pointer;
+    }
+    .action-select {
+      background: rgba(255,255,255,0.1);
+      color: white;
+      border: 1px solid rgba(255,255,255,0.2);
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      font-family: inherit;
+      outline: none;
+    }
+    .action-select option {
+      background: #1e1e2f;
+      color: white;
+    }
+  </style>
+</head>
+<body class="dashboard-body">
+  <div class="glass-bg"></div>
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+
+  <header class="topbar glass">
+    <div class="container topbar__inner">
+      <div class="brand">
+        <div class="brand__mark" aria-hidden="true">🛡️</div>
+        <div>
+          <div class="brand__title">Admin Dashboard</div>
+          <div class="brand__subtitle">Security Logs Overview</div>
+        </div>
+      </div>
+      <div class="topbar__actions">
+        <a href="/" class="btn btn--ghost">Home</a>
+        <a href="/notes" class="btn btn--ghost">App</a>
+        <button id="disconnectBtn" class="btn btn--ghost">Disconnect</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container page fade-in-up">
+    <section class="panel glass-panel">
+      <div class="panel__header">
+        <h1 class="panel__title">Recent Security Events</h1>
+        <p class="panel__hint">Live feed of authentication and operational logs.</p>
+      </div>
+      
+      <div class="controls-bar">
+        <div class="controls-left">
+          <select id="batchActionSelect" class="select" aria-label="Batch Action">
+            <option value="">-- Batch Action --</option>
+            <option value="block_ip">Block Selected IPs</option>
+            <option value="lock_user">Lock Selected Users</option>
+            <option value="remove_account">Delete Selected Users</option>
+            <option value="unlock_user">Unlock Selected Users</option>
+            <option value="unblock_ip">Unblock Selected IPs</option>
+          </select>
+          <button id="applyBatchBtn" class="btn btn--primary" style="padding: 0.5rem 1rem;">Apply</button>
+        </div>
+        <div class="controls-right">
+          <label for="sortSelect" style="color: rgba(255,255,255,0.7);">Sort by:</label>
+          <select id="sortSelect" class="select">
+            <option value="latest">Latest</option>
+            <option value="oldest">Oldest</option>
+            <option value="most_severe">Most Severe</option>
+            <option value="least_severe">Least Severe</option>
+            <option value="name_asc">Name A-Z</option>
+            <option value="name_desc">Name Z-A</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="table-container">
+        <table class="logs-table">
+          <thead>
+            <tr>
+              <th style="width: 40px;"><input type="checkbox" id="selectAllCb" class="table-checkbox" /></th>
+              <th>Timestamp</th>
+              <th>Username</th>
+              <th>Action</th>
+              <th>Status</th>
+              <th>Severity</th>
+              <th>Location</th>
+              <th>Details</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="logsBody">
+            <tr><td colspan="9" class="text-center">Loading logs...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="pagination">
+        <button id="prevPageBtn" class="btn btn--ghost" disabled>Previous</button>
+        <span id="pageIndicator" style="color: white; margin: 0 1rem;">Page 1</span>
+        <button id="nextPageBtn" class="btn btn--ghost" disabled>Next</button>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    let currentPage = 1;
+    let currentLimit = 20;
+
+    async function loadLogs() {
+      const sortValue = document.getElementById("sortSelect").value;
+      document.getElementById("selectAllCb").checked = false;
+      document.getElementById("logsBody").innerHTML = `<tr><td colspan="9" class="text-center">Loading logs...</td></tr>`;
+      
+      try {
+        const res = await fetch(`/api/logs?page=${currentPage}&limit=${currentLimit}&sort=${sortValue}`);
+        if (!res.ok) {
+           document.getElementById("logsBody").innerHTML = `<tr><td colspan="9" class="text-center log-error">Unauthorized or error retrieving logs.</td></tr>`;
+           return;
+        }
+        
+        const data = await res.json();
+        const logs = data.logs || [];
+        const total = data.total || 0;
+        
+        const tbody = document.getElementById("logsBody");
+        if (logs.length === 0) {
+           tbody.innerHTML = `<tr><td colspan="9" class="text-center">No logs found.</td></tr>`;
+           updatePagination(0);
+           return;
+        }
+        
+        tbody.innerHTML = logs.map(l => {
+          let geoStr = l.ipAddress;
+          if (l.geoLocation && l.geoLocation.country) {
+            geoStr += ` (${l.geoLocation.country})`;
+          }
+          return `
+          <tr class="sev-${l.severity}">
+            <td><input type="checkbox" class="table-checkbox row-cb" data-ip="${l.ipAddress}" data-username="${l.username}" /></td>
+            <td>${new Date(l.timestamp).toLocaleString()}</td>
+            <td><strong>${l.username}</strong></td>
+            <td><span class="badge action-badge">${l.action.toUpperCase()} ${l.method ? l.method : ""}</span></td>
+            <td><span class="status-badge ${l.status}">${l.status}</span></td>
+            <td class="severity-cell ${l.severity}">${l.severity.toUpperCase()}</td>
+            <td>${geoStr}</td>
+            <td class="details-cell">${l.details || "-"}</td>
+            <td>
+              <select class="action-select single-action" data-ip="${l.ipAddress}" data-username="${l.username}">
+                <option value="">Action...</option>
+                <option value="block_ip">Block IP</option>
+                <option value="unblock_ip">Unblock IP</option>
+                <option value="lock_user">Lock User</option>
+                <option value="unlock_user">Unlock User</option>
+                <option value="remove_account">Delete User</option>
+              </select>
+            </td>
+          </tr>
+        `}).join("");
+
+        updatePagination(total);
+        attachRowListeners();
+
+      } catch(e) {
+        document.getElementById("logsBody").innerHTML = `<tr><td colspan="9" class="text-center log-error">Network error.</td></tr>`;
+      }
+    }
+    
+    function updatePagination(total) {
+      const maxPages = Math.ceil(total / currentLimit) || 1;
+      document.getElementById("pageIndicator").textContent = `Page ${currentPage} of ${maxPages}`;
+      document.getElementById("prevPageBtn").disabled = currentPage <= 1;
+      document.getElementById("nextPageBtn").disabled = currentPage >= maxPages;
+    }
+
+    document.getElementById("prevPageBtn").addEventListener("click", () => {
+      if (currentPage > 1) { currentPage--; loadLogs(); }
+    });
+
+    document.getElementById("nextPageBtn").addEventListener("click", () => {
+      currentPage++; loadLogs();
+    });
+
+    document.getElementById("sortSelect").addEventListener("change", () => {
+      currentPage = 1; loadLogs();
+    });
+
+    document.getElementById("disconnectBtn").addEventListener("click", async () => {
+      await fetch("/logout", { method: "POST" });
+      window.location.href = "/signin";
+    });
+
+    document.getElementById("selectAllCb").addEventListener("change", (e) => {
+      const cbs = document.querySelectorAll(".row-cb");
+      cbs.forEach(cb => cb.checked = e.target.checked);
+    });
+
+    document.getElementById("applyBatchBtn").addEventListener("click", async () => {
+      const actionType = document.getElementById("batchActionSelect").value;
+      if (!actionType) return alert("Please select a batch action first.");
+
+      const cbs = document.querySelectorAll(".row-cb:checked");
+      if (cbs.length === 0) return alert("No rows selected.");
+
+      const targets = new Set();
+      cbs.forEach(cb => {
+        if (actionType.includes("ip")) {
+          if (cb.dataset.ip) targets.add(cb.dataset.ip);
+        } else {
+          if (cb.dataset.username && cb.dataset.username !== "anonymous") targets.add(cb.dataset.username);
+        }
+      });
+
+      const targetArray = Array.from(targets);
+      if (targetArray.length === 0) return alert("Selected rows do not have valid targets for this action.");
+
+      if (!confirm(`Are you sure you want to apply '${actionType}' to ${targetArray.length} unique targets?`)) return;
+
+      await sendAdminAction(targetArray, actionType);
+    });
+
+    function attachRowListeners() {
+      const selects = document.querySelectorAll(".single-action");
+      selects.forEach(sel => {
+        sel.addEventListener("change", async (e) => {
+          const actionType = e.target.value;
+          if (!actionType) return;
+          
+          let target = null;
+          if (actionType.includes("ip")) target = e.target.dataset.ip;
+          else target = e.target.dataset.username;
+
+          if (!target || (target === "anonymous" && !actionType.includes("ip"))) {
+             alert("Invalid target for this action.");
+             e.target.value = "";
+             return;
+          }
+
+          if (confirm(`Apply ${actionType} to ${target}?`)) {
+             await sendAdminAction([target], actionType);
+          }
+          e.target.value = "";
+        });
+      });
+    }
+
+    async function sendAdminAction(targets, actionType) {
+      try {
+        const res = await fetch("/api/admin/action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ targets, actionType })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          alert(data.message || "Success!");
+          loadLogs(); // Refresh view
+        } else {
+          alert("Error: " + (data.errorBody || "Action failed"));
+        }
+      } catch (err) {
+        alert("Network error processing action.");
+      }
+    }
+
+    loadLogs();
+  </script>
+</body>
+</html>

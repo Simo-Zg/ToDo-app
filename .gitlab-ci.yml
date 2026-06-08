@@ -1,0 +1,167 @@
+stages:
+  - validate
+  - test
+  - security
+  - package
+  - dast
+  - deploy
+  - notify
+
+variables:
+  APP_NAME: "todo-app"
+  DEPLOY_ENV: "staging"
+  DAST_TARGET_URL: "http://127.0.0.1:5000"
+
+cache:
+  key: "$CI_COMMIT_REF_SLUG"
+  paths:
+    - node_modules/
+
+.windows_job:
+  before_script:
+    - $ErrorActionPreference = "Stop"
+    - node --version
+    - npm --version
+
+.security_after_script:
+  after_script:
+    - |
+      if ($env:CI_JOB_STATUS -ne "success") {
+        powershell -ExecutionPolicy Bypass -File scripts\notify-telegram.ps1 -Message "Security job failed in pipeline $env:CI_PIPELINE_ID: $env:CI_JOB_NAME. $env:CI_PIPELINE_URL"
+      }
+
+validate_app:
+  stage: validate
+  extends: .windows_job
+  script:
+    - npm ci
+    - npm run check
+
+unit_tests:
+  stage: test
+  extends: .windows_job
+  script:
+    - npm ci
+    - npm test
+
+dependency_scan:
+  stage: security
+  extends:
+    - .windows_job
+    - .security_after_script
+  script:
+    - npm ci
+    - powershell -ExecutionPolicy Bypass -File scripts\security-scan.ps1 -Mode dependencies
+  artifacts:
+    when: always
+    paths:
+      - reports/npm-audit/
+    expire_in: 7 days
+
+secret_scan:
+  stage: security
+  extends:
+    - .windows_job
+    - .security_after_script
+  script:
+    - powershell -ExecutionPolicy Bypass -File scripts\security-scan.ps1 -Mode secrets
+  artifacts:
+    when: always
+    paths:
+      - reports/gitleaks/
+    expire_in: 7 days
+
+sast_scan:
+  stage: security
+  extends:
+    - .windows_job
+    - .security_after_script
+  script:
+    - powershell -ExecutionPolicy Bypass -File scripts\security-scan.ps1 -Mode sast
+  artifacts:
+    when: always
+    paths:
+      - reports/semgrep/
+    expire_in: 7 days
+
+docker_image_scan:
+  stage: security
+  extends:
+    - .windows_job
+    - .security_after_script
+  script:
+    - powershell -ExecutionPolicy Bypass -File scripts\security-scan.ps1 -Mode docker -ImageName "todo-app:$env:CI_COMMIT_SHORT_SHA"
+  artifacts:
+    when: always
+    paths:
+      - reports/trivy/
+    expire_in: 7 days
+
+package_image:
+  stage: package
+  extends: .windows_job
+  script:
+    - |
+      $image = "todo-app:$env:CI_COMMIT_SHORT_SHA"
+      docker build -t $image .
+      if ($env:CI_REGISTRY -and $env:CI_REGISTRY_IMAGE -and $env:CI_REGISTRY_USER -and $env:CI_REGISTRY_PASSWORD) {
+        docker login -u "$env:CI_REGISTRY_USER" -p "$env:CI_REGISTRY_PASSWORD" "$env:CI_REGISTRY"
+        docker tag $image "$env:CI_REGISTRY_IMAGE:$env:CI_COMMIT_SHORT_SHA"
+        docker tag $image "$env:CI_REGISTRY_IMAGE:latest"
+        docker push "$env:CI_REGISTRY_IMAGE:$env:CI_COMMIT_SHORT_SHA"
+        docker push "$env:CI_REGISTRY_IMAGE:latest"
+      } else {
+        Write-Host "GitLab registry variables are not available. Local image built only: $image"
+      }
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$RUN_DEPLOY == "true"'
+
+zap_dast_scan:
+  stage: dast
+  extends:
+    - .windows_job
+    - .security_after_script
+  script:
+    - |
+      if (-not (Test-Path ".env")) {
+        powershell -ExecutionPolicy Bypass -File scripts\install.ps1 -ForceEnv
+      }
+      docker compose down --remove-orphans
+      docker compose up -d --build
+      powershell -ExecutionPolicy Bypass -File scripts\wait-http.ps1 -Url "$env:DAST_TARGET_URL/health" -TimeoutSeconds 120
+      powershell -ExecutionPolicy Bypass -File scripts\security-scan.ps1 -Mode zap -TargetUrl "$env:DAST_TARGET_URL"
+  after_script:
+    - docker compose down --remove-orphans
+    - |
+      if ($env:CI_JOB_STATUS -ne "success") {
+        powershell -ExecutionPolicy Bypass -File scripts\notify-telegram.ps1 -Message "ZAP DAST failed in pipeline $env:CI_PIPELINE_ID. $env:CI_PIPELINE_URL"
+      }
+  artifacts:
+    when: always
+    paths:
+      - reports/zap/
+    expire_in: 7 days
+  rules:
+    - if: '$RUN_ZAP == "true"'
+
+deploy_local:
+  stage: deploy
+  extends: .windows_job
+  script:
+    - |
+      if (-not (Test-Path ".env")) {
+        powershell -ExecutionPolicy Bypass -File scripts\install.ps1 -ForceEnv
+      }
+      powershell -ExecutionPolicy Bypass -File scripts\deploy-local.ps1 -Environment "$env:DEPLOY_ENV"
+  environment:
+    name: $DEPLOY_ENV
+    url: http://127.0.0.1:5000
+  rules:
+    - if: '$RUN_DEPLOY == "true"'
+
+notify_pipeline:
+  stage: notify
+  script:
+    - powershell -ExecutionPolicy Bypass -File scripts\notify-telegram.ps1 -Message "Pipeline $env:CI_PIPELINE_ID reached notify stage. Ref: $env:CI_COMMIT_REF_NAME. URL: $env:CI_PIPELINE_URL"
+  when: always

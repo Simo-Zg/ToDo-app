@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Sign Up</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="./Style/index.css" />
+  <link rel="stylesheet" href="./Style/signup.css" />
+</head>
+<body>
+  <div class="glass-bg"></div>
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+
+  <main class="auth-page">
+    <div class="auth-wrap">
+      <section class="auth-side">
+        <div class="brand">
+          <div class="brand__mark">🚀</div>
+          <div>
+            <div class="brand__title">Tasks</div>
+            <div class="brand__subtitle">Simple task manager</div>
+          </div>
+        </div>
+
+        <div class="hero">
+          <h1>Create your account.</h1>
+          <p>Sign up to start organizing your work in the same clean interface.</p>
+
+          <div class="hero-cards">
+            <div class="hero-card">
+              <strong>Separate auth pages</strong>
+              <span>Dedicated sign in and sign up routes.</span>
+            </div>
+            <div class="hero-card">
+              <strong>Role support</strong>
+              <span>User and Admin flows with secret password for admin.</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel__header">
+          <h2 class="panel__title">Sign Up</h2>
+          <p class="panel__hint">Create a new account.</p>
+        </div>
+
+        <form id="signupForm" class="form" autocomplete="off">
+          <label class="field">
+            <span class="field__label">Username</span>
+            <input id="username" class="input" type="text" placeholder="Choose a username" required />
+          </label>
+
+          <label class="field">
+            <span class="field__label">Password</span>
+            <input id="password" class="input" type="password" placeholder="Create a password" required />
+          </label>
+
+          <label class="field">
+            <span class="field__label">Confirm password</span>
+            <input id="confirmPassword" class="input" type="password" placeholder="Confirm your password" required />
+          </label>
+
+          <label class="field">
+            <span class="field__label">Role</span>
+            <select id="role" class="select" required>
+              <option value="User">User</option>
+              <option value="Admin">Admin</option>
+            </select>
+          </label>
+
+          <label id="secretField" class="field hidden">
+            <span class="field__label">Admin secret password</span>
+            <input id="secretPassword" class="input" type="password" placeholder="Enter admin secret password" />
+          </label>
+
+          <div class="form__actions">
+            <button class="btn btn--primary" type="submit">Create Account</button>
+            <a class="btn btn--ghost link-btn" href="/signin">Already have an account</a>
+          </div>
+
+          <div class="status" role="status" aria-live="polite">
+            <span id="statusMsg">Fill in your information to create an account.</span>
+          </div>
+        </form>
+      </section>
+    </div>
+  </main>
+
+  <script src="./Scripts/signup.js" defer></script>
+</body>
+</html>

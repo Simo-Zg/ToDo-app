@@ -1,0 +1,44 @@
+{
+  "name": "todo-app",
+  "version": "2.0.0",
+  "description": "",
+  "main": "server.js",
+  "keywords": [
+    "todo",
+    "app",
+    "devsecops"
+  ],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^4.19.2",
+    "express-validator": "^7.1.0",
+    "geoip-lite": "^2.0.0",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^9.2.4"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "nodemon": "^3.1.4",
+    "supertest": "^7.0.0"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "check": "node --check server.js",
+    "test": "jest --passWithNoTests",
+    "test-watch": "jest --watch",
+    "security:audit": "npm audit --audit-level=high",
+    "docker:build": "docker build -t todo-app:local .",
+    "compose:up": "docker compose up --build",
+    "compose:down": "docker compose down"
+  },
+  "engines": {
+    "node": ">=24 <25"
+  }
+}
