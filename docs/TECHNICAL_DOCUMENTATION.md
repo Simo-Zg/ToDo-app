@@ -17,6 +17,7 @@ The agent does not embed secrets in prompts. It delegates sensitive operations t
 | GitLab Runner | Local Windows execution |
 | Docker Compose | App and MongoDB runtime |
 | Semgrep | SAST |
+| SonarQube | SAST and quality analysis |
 | npm audit | Dependency scan |
 | Gitleaks | Secret detection |
 | Trivy | Docker image scan |
@@ -39,7 +40,7 @@ sequenceDiagram
   OpenClaw->>Scripts: gitlab-control.ps1 -Action scan -Ref main
   Scripts->>GitLab: POST /pipeline with RUN_ZAP=true
   GitLab->>Runner: execute pipeline
-  Runner->>Tools: Semgrep, npm audit, Gitleaks, Trivy, ZAP
+  Runner->>Tools: Semgrep, SonarQube, npm audit, Gitleaks, Trivy, ZAP
   Runner->>Scripts: notify-telegram.ps1
   Scripts->>Channel: status notification
 ```
@@ -93,7 +94,7 @@ Required variables:
 
 | Scan | Job | Report |
 | --- | --- | --- |
-| SAST | `sast_scan` | `reports/semgrep/semgrep.json` |
+| SAST | `sast_scan` | `reports/semgrep/semgrep.json`, `reports/sonarqube/sonarqube-summary.txt` |
 | Dependencies | `dependency_scan` | `reports/npm-audit/npm-audit.json` |
 | Secrets | `secret_scan` | `reports/gitleaks/gitleaks.json` |
 | Docker image | `docker_image_scan` | `reports/trivy/trivy-image.json` |

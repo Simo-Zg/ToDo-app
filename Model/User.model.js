@@ -45,7 +45,7 @@ async function markLoginSuccess(userId) {
         failedLoginStreak: 0,
       },
     },
-    { new: true }
+    { returnDocument: "after" }
   ).exec();
 }
 
@@ -59,7 +59,7 @@ async function markLoginFailure(userId, lockMinutes) {
       $inc: { failedLoginAttempts: 1, failedLoginStreak: 1 },
       $set: { state: "locked", lockUntil },
     },
-    { new: true }
+    { returnDocument: "after" }
   ).exec();
 }
 
@@ -67,7 +67,7 @@ async function incrementFailedAttempt(userId) {
   return User.findByIdAndUpdate(
     userId,
     { $inc: { failedLoginAttempts: 1 } },
-    { new: true }
+    { returnDocument: "after" }
   ).exec();
 }
 
@@ -78,7 +78,7 @@ async function unlockUserIfExpired(user) {
     return User.findByIdAndUpdate(
       user._id,
       { $set: { state: "open", lockUntil: null, failedLoginAttempts: 0 } },
-      { new: true }
+      { returnDocument: "after" }
     ).exec();
   }
   return user;
@@ -92,7 +92,7 @@ async function lockUserByUsername(username) {
   return User.findOneAndUpdate(
     { username },
     { $set: { state: "locked", lockUntil: new Date("2099-01-01T00:00:00Z") } },
-    { new: true }
+    { returnDocument: "after" }
   ).exec();
 }
 

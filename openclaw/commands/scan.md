@@ -5,6 +5,7 @@ Intent: launch the security workflow from chat.
 This command starts a GitLab pipeline with security flags:
 
 - SAST with Semgrep
+- SAST/quality analysis with SonarQube when `SONAR_TOKEN` is configured
 - dependency scan with npm audit
 - secret scan with Gitleaks
 - Docker image scan with Trivy

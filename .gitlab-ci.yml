@@ -7,10 +7,15 @@ stages:
   - deploy
   - notify
 
+default:
+  tags:
+    - todo-app-runner
+
 variables:
   APP_NAME: "todo-app"
   DEPLOY_ENV: "staging"
   DAST_TARGET_URL: "http://127.0.0.1:5000"
+  SAST_SCANNERS: "semgrep,sonarqube"
 
 cache:
   key: "$CI_COMMIT_REF_SLUG"
@@ -77,11 +82,12 @@ sast_scan:
     - .windows_job
     - .security_after_script
   script:
-    - powershell -ExecutionPolicy Bypass -File scripts\security-scan.ps1 -Mode sast
+    - powershell -ExecutionPolicy Bypass -File scripts\security-scan.ps1 -Mode sast -SastScanners "$env:SAST_SCANNERS"
   artifacts:
     when: always
     paths:
       - reports/semgrep/
+      - reports/sonarqube/
     expire_in: 7 days
 
 docker_image_scan:

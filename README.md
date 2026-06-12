@@ -103,9 +103,37 @@ TELEGRAM_BOT_TOKEN=<telegram bot token>
 TELEGRAM_CHAT_ID=<authorized chat id>
 DAST_TARGET_URL=http://127.0.0.1:5000
 ZAP_PATH=<optional full path to zap.bat>
+SAST_SCANNERS=semgrep,sonarqube
+SEMGREP_APP_TOKEN=<optional masked token>
+SONAR_HOST_URL=http://host.docker.internal:9000
+SONAR_TOKEN=<masked token>
+SONAR_PROJECT_KEY=todo-devsecops
 ```
 
 Do not commit real secrets. Use `.env.example` as the template.
+
+## Local Runner
+
+The pipeline is pinned to the local runner through this job tag:
+
+```yaml
+tags:
+  - todo-app-runner
+```
+
+In GitLab, open **Settings > CI/CD > Runners**, select the runner named `todo-app-runner`, and make sure it has the tag `todo-app-runner`. Disable shared runners for the project if you want to guarantee that GitLab-hosted runners never pick up jobs.
+
+The runner executable used locally is:
+
+```text
+C:\Gitlab-Runner\gitlab-runner.exe
+```
+
+The project remote is:
+
+```text
+https://gitlab.com/Simo-Zg/ToDo-app.git
+```
 
 ## Pipeline
 
