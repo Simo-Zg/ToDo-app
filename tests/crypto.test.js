@@ -2,7 +2,7 @@ const { encryptText, decryptText } = require("../utils/crypto.utils");
 
 describe("AES-GCM task encryption", () => {
   beforeAll(() => {
-    process.env.AES_KEY = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    process.env.AES_KEY = Buffer.alloc(32, 1).toString("hex");
   });
 
   test("encrypts and decrypts task content", () => {

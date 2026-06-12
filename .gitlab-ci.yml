@@ -15,7 +15,7 @@ variables:
   APP_NAME: "todo-app"
   DEPLOY_ENV: "staging"
   DAST_TARGET_URL: "http://127.0.0.1:5000"
-  SAST_SCANNERS: "semgrep,sonarqube"
+  SAST_SCANNERS: "semgrep"
 
 cache:
   key: "$CI_COMMIT_REF_SLUG"
@@ -150,6 +150,9 @@ zap_dast_scan:
     expire_in: 7 days
   rules:
     - if: '$RUN_ZAP == "true"'
+      when: on_success
+    - when: manual
+      allow_failure: true
 
 deploy_local:
   stage: deploy

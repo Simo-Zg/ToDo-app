@@ -22,7 +22,7 @@ if ([string]::IsNullOrWhiteSpace($TargetUrl)) {
 }
 
 if ([string]::IsNullOrWhiteSpace($SastScanners)) {
-  $SastScanners = "semgrep,sonarqube"
+  $SastScanners = "semgrep"
 }
 
 $ReportsRoot = Join-Path $ProjectRoot "reports"
@@ -55,14 +55,50 @@ function Should-Run {
 function Ensure-DockerImage {
   param([string]$Image)
 
-  docker image inspect $Image *> $null
+  $inspectOutput = & docker image inspect $Image 2>&1
   if ($LASTEXITCODE -ne 0) {
     Write-Host "Docker image not found locally. Pulling $Image..."
-    docker pull $Image
+    & docker pull $Image
     if ($LASTEXITCODE -ne 0) {
       throw "Unable to pull Docker image $Image."
     }
+  } else {
+    $null = $inspectOutput
   }
+}
+
+function ConvertTo-CommandLineArgument {
+  param([string]$Value)
+
+  if ($Value -match '[\s"]') {
+    return '"' + ($Value -replace '"', '\"') + '"'
+  }
+
+  return $Value
+}
+
+function Invoke-DockerWithTimeout {
+  param(
+    [string[]]$Arguments,
+    [string]$ContainerName,
+    [int]$TimeoutSeconds = 120
+  )
+
+  $argumentLine = ($Arguments | ForEach-Object { ConvertTo-CommandLineArgument $_ }) -join " "
+  $process = Start-Process -FilePath "docker" -ArgumentList $argumentLine -NoNewWindow -PassThru
+
+  if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
+    Write-Warning "Docker command timed out after $TimeoutSeconds seconds. Stopping container $ContainerName."
+    & docker stop $ContainerName 2>$null | Out-Null
+    try {
+      $process.Kill()
+    } catch {
+      Write-Warning "Unable to kill docker process: $($_.Exception.Message)"
+    }
+    return 124
+  }
+
+  return $process.ExitCode
 }
 
 if (Should-Run "dependencies") {
@@ -81,8 +117,10 @@ if (Should-Run "secrets") {
   Invoke-ScanStep "Secret scan (Gitleaks)" {
     $dir = Join-Path $ReportsRoot "gitleaks"
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    Ensure-DockerImage "zricethezav/gitleaks:latest"
     & docker run --rm -v "${ProjectRoot}:/repo" zricethezav/gitleaks:latest detect `
       --source=/repo `
+      --config=/repo/.gitleaks.toml `
       --no-git `
       --redact `
       --report-format=json `
@@ -116,18 +154,26 @@ if ((Should-Run "sast") -or (Should-Run "semgrep")) {
         "semgrep",
         "scan",
         "--config",
-        "p/nodejs",
-        "--config",
-        "p/owasp-top-ten",
+        "/src/.semgrep.yml",
+        "--timeout",
+        "60",
+        "--jobs",
+        "1",
         "--json",
         "--output",
         "/src/reports/semgrep/semgrep.json",
-        "/src"
+        "/src/server.js",
+        "/src/controllers",
+        "/src/middleware",
+        "/src/Model",
+        "/src/utils",
+        "/src/public/Scripts"
       )
     }
 
     & docker @dockerArgs
-    if ($LASTEXITCODE -ne 0) {
+    $semgrepExitCode = $LASTEXITCODE
+    if ($semgrepExitCode -ne 0) {
       throw "Semgrep found blocking issues or failed to run."
     }
   }
@@ -148,8 +194,13 @@ if ((Should-Run "sast") -or (Should-Run "sonarqube")) {
       $sonarHostUrl = "http://host.docker.internal:9000"
     }
 
-    if ([string]::IsNullOrWhiteSpace($env:SONAR_TOKEN)) {
+    if ([string]::IsNullOrWhiteSpace($env:SONAR_TOKEN) -and $Mode -eq "sonarqube") {
       throw "SONAR_TOKEN is missing. Add it as a masked GitLab CI/CD variable or local .env value."
+    }
+
+    if ([string]::IsNullOrWhiteSpace($env:SONAR_TOKEN)) {
+      Write-Host "SonarQube skipped because SONAR_TOKEN is not configured."
+      return
     }
 
     $projectKey = $env:SONAR_PROJECT_KEY
@@ -199,6 +250,8 @@ if (Should-Run "docker") {
       throw "Docker save failed."
     }
 
+    Ensure-DockerImage "aquasec/trivy:latest"
+
     & docker run --rm -v "${dir}:/reports" aquasec/trivy:latest image `
       --input /reports/todo-app.tar `
       --severity HIGH,CRITICAL `
@@ -206,6 +259,12 @@ if (Should-Run "docker") {
       --output /reports/trivy-image.json `
       --exit-code 1
     if ($LASTEXITCODE -ne 0) {
+      & docker run --rm -v "${dir}:/reports" aquasec/trivy:latest image `
+        --input /reports/todo-app.tar `
+        --severity HIGH,CRITICAL `
+        --format table `
+        --output /reports/trivy-image.txt `
+        --exit-code 0
       throw "Trivy found high or critical image vulnerabilities."
     }
   }

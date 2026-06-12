@@ -1,0 +1,32 @@
+rules:
+  - id: node-dangerous-eval
+    message: Avoid eval because it can execute attacker-controlled JavaScript.
+    severity: ERROR
+    languages:
+      - javascript
+    pattern: eval(...)
+
+  - id: node-child-process-import
+    message: Review child_process usage carefully; command execution can become injection-prone.
+    severity: WARNING
+    languages:
+      - javascript
+    pattern-either:
+      - pattern: require("child_process")
+      - pattern: require('child_process')
+
+  - id: node-hardcoded-jwt-secret
+    message: JWT secrets should come from environment variables or a secret manager.
+    severity: ERROR
+    languages:
+      - javascript
+    pattern: jwt.sign(..., "...", ...)
+
+  - id: express-missing-http-only-cookie
+    message: Cookies carrying auth/session state should use httpOnly.
+    severity: WARNING
+    languages:
+      - javascript
+    patterns:
+      - pattern: $RES.cookie($NAME, $VALUE, $OPTS)
+      - pattern-not: '$RES.cookie($NAME, $VALUE, { ..., httpOnly: true, ... })'

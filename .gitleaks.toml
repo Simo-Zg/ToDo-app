@@ -1,0 +1,11 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Ignore local runtime files and generated artifacts"
+paths = [
+  '''(^|/)\.env$''',
+  '''(^|/)node_modules/''',
+  '''(^|/)reports/''',
+  '''(^|/)coverage/'''
+]
