@@ -32,7 +32,7 @@ cache:
   after_script:
     - |
       if ($env:CI_JOB_STATUS -ne "success") {
-        powershell -ExecutionPolicy Bypass -File scripts\notify-telegram.ps1 -Message "Security job failed in pipeline $env:CI_PIPELINE_ID: $env:CI_JOB_NAME. $env:CI_PIPELINE_URL"
+        powershell -ExecutionPolicy Bypass -File scripts/notify-telegram.ps1 -Message 'Security job failed in pipeline $env:CI_PIPELINE_ID: $env:CI_JOB_NAME. $env:CI_PIPELINE_URL'
       }
 
 validate_app:
@@ -56,7 +56,7 @@ dependency_scan:
     - .security_after_script
   script:
     - npm ci
-    - powershell -ExecutionPolicy Bypass -File scripts\security-scan.ps1 -Mode dependencies
+    - powershell -ExecutionPolicy Bypass -File scripts/security-scan.ps1 -Mode dependencies
   artifacts:
     when: always
     paths:
@@ -69,7 +69,7 @@ secret_scan:
     - .windows_job
     - .security_after_script
   script:
-    - powershell -ExecutionPolicy Bypass -File scripts\security-scan.ps1 -Mode secrets
+    - powershell -ExecutionPolicy Bypass -File scripts/security-scan.ps1 -Mode secrets
   artifacts:
     when: always
     paths:
@@ -82,7 +82,7 @@ sast_scan:
     - .windows_job
     - .security_after_script
   script:
-    - powershell -ExecutionPolicy Bypass -File scripts\security-scan.ps1 -Mode sast -SastScanners "$env:SAST_SCANNERS"
+    - powershell -ExecutionPolicy Bypass -File scripts/security-scan.ps1 -Mode sast -SastScanners "$env:SAST_SCANNERS"
   artifacts:
     when: always
     paths:
@@ -96,7 +96,7 @@ docker_image_scan:
     - .windows_job
     - .security_after_script
   script:
-    - powershell -ExecutionPolicy Bypass -File scripts\security-scan.ps1 -Mode docker -ImageName "todo-app:$env:CI_COMMIT_SHORT_SHA"
+    - powershell -ExecutionPolicy Bypass -File scripts/security-scan.ps1 -Mode docker -ImageName "todo-app:$env:CI_COMMIT_SHORT_SHA"
   artifacts:
     when: always
     paths:
@@ -131,17 +131,17 @@ zap_dast_scan:
   script:
     - |
       if (-not (Test-Path ".env")) {
-        powershell -ExecutionPolicy Bypass -File scripts\install.ps1 -ForceEnv
+        powershell -ExecutionPolicy Bypass -File scripts/install.ps1 -ForceEnv
       }
       docker compose down --remove-orphans
       docker compose up -d --build
-      powershell -ExecutionPolicy Bypass -File scripts\wait-http.ps1 -Url "$env:DAST_TARGET_URL/health" -TimeoutSeconds 120
-      powershell -ExecutionPolicy Bypass -File scripts\security-scan.ps1 -Mode zap -TargetUrl "$env:DAST_TARGET_URL"
+      powershell -ExecutionPolicy Bypass -File scripts/wait-http.ps1 -Url "$env:DAST_TARGET_URL/health" -TimeoutSeconds 120
+      powershell -ExecutionPolicy Bypass -File scripts/security-scan.ps1 -Mode zap -TargetUrl "$env:DAST_TARGET_URL"
   after_script:
     - docker compose down --remove-orphans
     - |
       if ($env:CI_JOB_STATUS -ne "success") {
-        powershell -ExecutionPolicy Bypass -File scripts\notify-telegram.ps1 -Message "ZAP DAST failed in pipeline $env:CI_PIPELINE_ID. $env:CI_PIPELINE_URL"
+        powershell -ExecutionPolicy Bypass -File scripts/notify-telegram.ps1 -Message 'ZAP DAST failed in pipeline $env:CI_PIPELINE_ID. $env:CI_PIPELINE_URL'
       }
   artifacts:
     when: always
@@ -157,9 +157,9 @@ deploy_local:
   script:
     - |
       if (-not (Test-Path ".env")) {
-        powershell -ExecutionPolicy Bypass -File scripts\install.ps1 -ForceEnv
+        powershell -ExecutionPolicy Bypass -File scripts/install.ps1 -ForceEnv
       }
-      powershell -ExecutionPolicy Bypass -File scripts\deploy-local.ps1 -Environment "$env:DEPLOY_ENV"
+      powershell -ExecutionPolicy Bypass -File scripts/deploy-local.ps1 -Environment "$env:DEPLOY_ENV"
   environment:
     name: $DEPLOY_ENV
     url: http://127.0.0.1:5000
@@ -169,5 +169,5 @@ deploy_local:
 notify_pipeline:
   stage: notify
   script:
-    - powershell -ExecutionPolicy Bypass -File scripts\notify-telegram.ps1 -Message "Pipeline $env:CI_PIPELINE_ID reached notify stage. Ref: $env:CI_COMMIT_REF_NAME. URL: $env:CI_PIPELINE_URL"
+    - powershell -ExecutionPolicy Bypass -File scripts/pipeline-notify.ps1
   when: always
