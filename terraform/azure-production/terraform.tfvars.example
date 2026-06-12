@@ -1,0 +1,7 @@
+resource_group_name = "tp-devsecops-rg"
+azure_region        = "West Europe"
+app_name            = "tp-devsecops-prod"
+docker_image        = "registry.gitlab.com/VOTRE_GROUPE/tp-devsecops-app"
+docker_image_tag    = "latest"
+registry_url        = "https://registry.gitlab.com"
+# registry_user, registry_password : ne pas commiter
