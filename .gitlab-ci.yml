@@ -15,7 +15,7 @@ variables:
   APP_NAME: "todo-app"
   DEPLOY_ENV: "staging"
   DAST_TARGET_URL: "http://127.0.0.1:5000"
-  SAST_SCANNERS: "semgrep"
+  SAST_SCANNERS: "sonarqube"
 
 cache:
   key: "$CI_COMMIT_REF_SLUG"
@@ -89,6 +89,24 @@ sast_scan:
       - reports/semgrep/
       - reports/sonarqube/
     expire_in: 7 days
+
+semgrep_scan:
+  stage: security
+  extends:
+    - .windows_job
+    - .security_after_script
+  script:
+    - powershell -ExecutionPolicy Bypass -File scripts\security-scan.ps1 -Mode semgrep
+  artifacts:
+    when: always
+    paths:
+      - reports/semgrep/
+    expire_in: 7 days
+  rules:
+    - if: '$RUN_SEMGREP == "true"'
+      when: on_success
+    - when: manual
+      allow_failure: true
 
 docker_image_scan:
   stage: security
