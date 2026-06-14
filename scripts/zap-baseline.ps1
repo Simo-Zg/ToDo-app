@@ -2,7 +2,8 @@
 param(
   [string]$TargetUrl = $env:DAST_TARGET_URL,
   [string]$ZapPath = $env:ZAP_PATH,
-  [string]$ReportDir
+  [string]$ReportDir,
+  [int]$TimeoutSeconds = 300
 )
 
 $ErrorActionPreference = "Stop"
@@ -48,6 +49,16 @@ function Resolve-ZapBat {
   throw "ZAP was not found. Set ZAP_PATH to the full path of zap.bat."
 }
 
+function ConvertTo-CommandLineArgument {
+  param([string]$Value)
+
+  if ($Value -match '[\s"]') {
+    return '"' + ($Value -replace '"', '\"') + '"'
+  }
+
+  return $Value
+}
+
 $zap = Resolve-ZapBat -Candidate $ZapPath
 New-Item -ItemType Directory -Force -Path $ReportDir | Out-Null
 
@@ -56,17 +67,21 @@ $htmlReport = Join-Path $ReportDir "zap-$timestamp.html"
 
 Write-Host "Running ZAP quick scan against $TargetUrl"
 Write-Host "ZAP: $zap"
+Write-Host "Timeout: $TimeoutSeconds seconds"
 
 $zapDir = Split-Path $zap -Parent
-Push-Location $zapDir
-try {
-  & $zap -cmd -quickurl $TargetUrl -quickprogress -quickout $htmlReport
-} finally {
-  Pop-Location
+$zapArgs = @("-cmd", "-quickurl", $TargetUrl, "-quickprogress", "-quickout", $htmlReport)
+$zapArgumentLine = '"' + $zap + '" ' + (($zapArgs | ForEach-Object { ConvertTo-CommandLineArgument $_ }) -join " ")
+$process = Start-Process -FilePath "cmd.exe" -ArgumentList @("/c", $zapArgumentLine) -WorkingDirectory $zapDir -NoNewWindow -PassThru
+
+if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
+  Write-Warning "ZAP scan timed out after $TimeoutSeconds seconds. Stopping process tree."
+  & taskkill.exe /PID $process.Id /T /F 2>$null | Out-Null
+  throw "ZAP scan timed out after $TimeoutSeconds seconds."
 }
 
-if ($LASTEXITCODE -ne 0) {
-  throw "ZAP scan failed with exit code $LASTEXITCODE"
+if ($process.ExitCode -ne 0) {
+  throw "ZAP scan failed with exit code $($process.ExitCode)"
 }
 
 Write-Host "ZAP report: $htmlReport"

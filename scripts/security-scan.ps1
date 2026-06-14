@@ -5,7 +5,8 @@ param(
 
   [string]$ImageName = "todo-app:security",
   [string]$TargetUrl = $env:DAST_TARGET_URL,
-  [string]$SastScanners = $env:SAST_SCANNERS
+  [string]$SastScanners = $env:SAST_SCANNERS,
+  [int]$ZapTimeoutSeconds = 300
 )
 
 $ErrorActionPreference = "Stop"
@@ -320,7 +321,7 @@ if (Should-Run "docker") {
 
 if (Should-Run "zap") {
   Invoke-ScanStep "DAST scan (OWASP ZAP)" {
-    & (Join-Path $PSScriptRoot "zap-baseline.ps1") -TargetUrl $TargetUrl
+    & (Join-Path $PSScriptRoot "zap-baseline.ps1") -TargetUrl $TargetUrl -TimeoutSeconds $ZapTimeoutSeconds
   }
 }
 

@@ -16,6 +16,7 @@ variables:
   DEPLOY_ENV: "staging"
   DAST_TARGET_URL: "http://127.0.0.1:5000"
   SAST_SCANNERS: "sonarqube"
+  ZAP_TIMEOUT_SECONDS: "300"
 
 .windows_job:
   before_script:
@@ -133,6 +134,7 @@ package_image:
 
 zap_scan:
   stage: zap
+  timeout: 12 minutes
   extends:
     - .windows_job
     - .security_after_script
@@ -144,7 +146,7 @@ zap_scan:
       docker compose down --remove-orphans
       docker compose up -d --build
       powershell -ExecutionPolicy Bypass -File scripts\wait-http.ps1 -Url "$env:DAST_TARGET_URL/health" -TimeoutSeconds 120
-      powershell -ExecutionPolicy Bypass -File scripts\security-scan.ps1 -Mode zap -TargetUrl "$env:DAST_TARGET_URL"
+      powershell -ExecutionPolicy Bypass -File scripts\security-scan.ps1 -Mode zap -TargetUrl "$env:DAST_TARGET_URL" -ZapTimeoutSeconds "$env:ZAP_TIMEOUT_SECONDS"
   after_script:
     - docker compose down --remove-orphans
     - |
