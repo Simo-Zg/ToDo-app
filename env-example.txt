@@ -17,7 +17,7 @@ GitLab/OpenClaw values :
 
 GITLAB_PROJECT_ID=Simo-Zg/ToDo-app
 GITLAB_API_TOKEN=
-TELEGRAM_BOT_TOKEN=optional_if_openclaw_sends_notifications
-TELEGRAM_CHAT_ID=optional_if_openclaw_sends_notifications
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
 SEMGREP_APP_TOKEN=optional_masked_token
 SONAR_TOKEN=

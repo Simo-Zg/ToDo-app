@@ -19,8 +19,7 @@ if ([string]::IsNullOrWhiteSpace($ChatId)) {
 }
 
 if ([string]::IsNullOrWhiteSpace($BotToken) -or [string]::IsNullOrWhiteSpace($ChatId)) {
-  Write-Host "Telegram notification skipped: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is missing."
-  exit 0
+  throw "TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are required. Store them as masked GitLab CI/CD variables or expose them from HashiCorp Vault."
 }
 
 $uri = "https://api.telegram.org/bot$BotToken/sendMessage"

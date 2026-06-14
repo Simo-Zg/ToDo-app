@@ -4,8 +4,7 @@ param(
   [string]$ZapPath = $env:ZAP_PATH,
   [string]$ReportDir,
   [int]$TimeoutSeconds = 300,
-  [int]$ZapPort = 8090,
-  [bool]$FailOnTimeout = $false
+  [int]$ZapPort = 8090
 )
 
 $ErrorActionPreference = "Stop"
@@ -102,19 +101,14 @@ try {
   }
 
   if ((Get-Date) -ge $deadline) {
-    if ($FailOnTimeout) {
-      throw "ZAP daemon did not become ready within $TimeoutSeconds seconds."
-    }
-    "ZAP daemon startup timed out after $TimeoutSeconds seconds." | Set-Content -Path $summaryReport
-    Write-Warning "ZAP daemon startup timed out. Summary: $summaryReport"
-    return
+    throw "ZAP daemon did not become ready within $TimeoutSeconds seconds."
   }
 
   Write-Host "Sending target request through ZAP proxy..."
   try {
     Invoke-WebRequest -Uri $TargetUrl -Proxy "http://127.0.0.1:$ZapPort" -UseBasicParsing -TimeoutSec 20 | Out-Null
   } catch {
-    Write-Warning "The proxied target request failed: $($_.Exception.Message)"
+    throw "The proxied target request failed: $($_.Exception.Message)"
   }
 
   Start-Sleep -Seconds 5
@@ -140,6 +134,10 @@ try {
 
   Write-Host "ZAP summary: $summaryReport"
   Write-Host "ZAP report: $htmlReport"
+
+  if ($highCount -gt 0 -or $mediumCount -gt 0) {
+    throw "ZAP found blocking alerts. High=$highCount Medium=$mediumCount Low=$lowCount. Report: $htmlReport"
+  }
 } finally {
   try {
     Invoke-RestMethod -Uri "http://127.0.0.1:$ZapPort/JSON/core/action/shutdown/" -TimeoutSec 5 | Out-Null

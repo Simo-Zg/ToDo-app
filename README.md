@@ -126,18 +126,40 @@ K8S_PRODUCTION_NAMESPACE=todo-production
 Do not commit real secrets. Use `.env.example` as the local name template only.
 For GitLab pipelines, store sensitive values as masked CI/CD variables or expose them through HashiCorp Vault with the same environment variable names:
 
-- `GITLAB_API_TOKEN`
-- `TELEGRAM_BOT_TOKEN`
-- `TELEGRAM_CHAT_ID`
-- `SEMGREP_APP_TOKEN`
-- `SONAR_TOKEN`
+Required sensitive CI/CD variables:
+
+- `GITLAB_API_TOKEN`: GitLab token used by OpenClaw commands to create, retry, cancel, inspect and play pipelines.
+- `TELEGRAM_BOT_TOKEN`: Telegram notification bot token.
+- `TELEGRAM_CHAT_ID`: authorized Telegram chat id for notifications.
+- `SONAR_TOKEN`: SonarQube scan token because `SAST_SCANNERS=sonarqube` is enabled.
+- `JWT_SECRET`: application access-token secret for Kubernetes deployment.
+- `JWT_REFRESH_SECRET`: application refresh-token secret for Kubernetes deployment.
+- `SECRET_PASSWORD`: application secret password for Kubernetes deployment.
+- `AES_KEY`: application encryption key for Kubernetes deployment.
+
+Required AWS deployment CI/CD variables:
+
 - `AWS_ACCESS_KEY_ID`
 - `AWS_SECRET_ACCESS_KEY`
-- `AWS_SESSION_TOKEN` when temporary AWS credentials are used
-- `JWT_SECRET`
-- `JWT_REFRESH_SECRET`
-- `SECRET_PASSWORD`
-- `AES_KEY`
+- `AWS_REGION`
+- `AWS_ECR_REPOSITORY`
+- `AWS_EKS_CLUSTER_NAME`
+- `K8S_STAGING_NAMESPACE`
+- `K8S_PRODUCTION_NAMESPACE`
+- `K8S_SERVICE_TYPE`
+
+Optional CI/CD variables:
+
+- `AWS_SESSION_TOKEN`: only for temporary AWS credentials.
+- `AWS_ACCOUNT_ID`: optional because the ECR script can read it through AWS STS.
+- `SEMGREP_APP_TOKEN`: optional unless Semgrep Cloud is required.
+- `SONAR_HOST_URL`: defaults to `http://host.docker.internal:9000`.
+- `SONAR_PROJECT_KEY`: defaults to `todo-devsecops`.
+- `DAST_TARGET_URL`: defaults to `http://127.0.0.1:5000`.
+- `ZAP_PATH`: only needed if ZAP is installed outside the common Windows paths.
+- `ZAP_TIMEOUT_SECONDS`: defaults to `180` in CI.
+
+For a stricter real-production simulation, do not mark jobs with `allow_failure`. This pipeline is configured to fail on scanner errors, blocking vulnerabilities, missing configured credentials, AWS packaging errors, AWS deployment errors, and Telegram notification errors.
 
 Azure is intentionally not used in this project. The previous Azure Terraform path was removed to avoid accidental billing.
 

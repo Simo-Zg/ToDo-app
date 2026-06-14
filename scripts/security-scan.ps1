@@ -268,13 +268,9 @@ if ((Should-Run "sast") -or (Should-Run "sonarqube")) {
       $sonarHostUrl = "http://host.docker.internal:9000"
     }
 
-    if ([string]::IsNullOrWhiteSpace($env:SONAR_TOKEN) -and $Mode -eq "sonarqube") {
+    $sonarConfigured = $SastScanners -match "(^|,)sonarqube(,|$)" -or $Mode -eq "sonarqube"
+    if ([string]::IsNullOrWhiteSpace($env:SONAR_TOKEN) -and $sonarConfigured) {
       throw "SONAR_TOKEN is missing. Add it as a masked GitLab CI/CD variable or local .env value."
-    }
-
-    if ([string]::IsNullOrWhiteSpace($env:SONAR_TOKEN)) {
-      Write-Host "SonarQube skipped because SONAR_TOKEN is not configured."
-      return
     }
 
     $projectKey = $env:SONAR_PROJECT_KEY

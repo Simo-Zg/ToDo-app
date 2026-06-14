@@ -158,7 +158,7 @@ package_image:
         docker push "$env:CI_REGISTRY_IMAGE:$env:CI_COMMIT_SHORT_SHA"
         docker push "$env:CI_REGISTRY_IMAGE:latest"
       } else {
-        Write-Host "GitLab registry variables are not available. Local image built only: $image"
+        throw "GitLab registry variables are missing. Enable the GitLab Container Registry or configure registry CI/CD variables."
       }
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'
