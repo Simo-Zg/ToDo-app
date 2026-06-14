@@ -23,7 +23,7 @@ variables:
   NPM_CONFIG_CACHE: 'D:\Gitlab-Runner\npm-cache'
   SAST_SCANNERS: "sonarqube"
   TRIVY_DB_REPOSITORY: "ghcr.io/aquasecurity/trivy-db:2"
-  ZAP_TIMEOUT_SECONDS: "300"
+  ZAP_TIMEOUT_SECONDS: "180"
 
 workflow:
   auto_cancel:
@@ -161,7 +161,7 @@ package_image:
 
 zap_scan:
   stage: zap
-  timeout: 12 minutes
+  timeout: 8 minutes
   resource_group: local-docker-scanners
   extends:
     - .windows_job

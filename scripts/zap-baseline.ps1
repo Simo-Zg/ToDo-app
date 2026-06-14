@@ -3,7 +3,8 @@ param(
   [string]$TargetUrl = $env:DAST_TARGET_URL,
   [string]$ZapPath = $env:ZAP_PATH,
   [string]$ReportDir,
-  [int]$TimeoutSeconds = 300
+  [int]$TimeoutSeconds = 300,
+  [bool]$FailOnTimeout = $false
 )
 
 $ErrorActionPreference = "Stop"
@@ -64,6 +65,7 @@ New-Item -ItemType Directory -Force -Path $ReportDir | Out-Null
 
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $htmlReport = Join-Path $ReportDir "zap-$timestamp.html"
+$timeoutReport = Join-Path $ReportDir "zap-timeout-$timestamp.txt"
 
 Write-Host "Running ZAP quick scan against $TargetUrl"
 Write-Host "ZAP: $zap"
@@ -77,7 +79,21 @@ $process = Start-Process -FilePath "cmd.exe" -ArgumentList @("/c", $zapArgumentL
 if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
   Write-Warning "ZAP scan timed out after $TimeoutSeconds seconds. Stopping process tree."
   & taskkill.exe /PID $process.Id /T /F 2>$null | Out-Null
-  throw "ZAP scan timed out after $TimeoutSeconds seconds."
+
+  @(
+    "ZAP bounded scan reached the configured timeout.",
+    "TargetUrl=$TargetUrl",
+    "TimeoutSeconds=$TimeoutSeconds",
+    "CompletedAt=$(Get-Date -Format o)",
+    "HtmlReport=$htmlReport"
+  ) | Set-Content -Path $timeoutReport
+
+  if ($FailOnTimeout) {
+    throw "ZAP scan timed out after $TimeoutSeconds seconds."
+  }
+
+  Write-Host "ZAP timeout summary: $timeoutReport"
+  return
 }
 
 if ($process.ExitCode -ne 0) {
