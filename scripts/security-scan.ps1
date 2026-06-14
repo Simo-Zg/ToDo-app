@@ -94,18 +94,29 @@ function Invoke-ProcessWithTimeout {
   )
 
   $argumentLine = ($Arguments | ForEach-Object { ConvertTo-CommandLineArgument $_ }) -join " "
-  $process = Start-Process -FilePath $FilePath -ArgumentList $argumentLine -NoNewWindow -PassThru
+  $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+  $startInfo.FileName = $FilePath
+  $startInfo.Arguments = $argumentLine
+  $startInfo.UseShellExecute = $false
+
+  $process = New-Object System.Diagnostics.Process
+  $process.StartInfo = $startInfo
+  [void]$process.Start()
 
   if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
     try {
-      $process.Kill()
+      & taskkill.exe /PID $process.Id /T /F 2>$null | Out-Null
     } catch {
       Write-Warning "Unable to kill timed-out process: $($_.Exception.Message)"
     }
     throw "$Description timed out after $TimeoutSeconds seconds."
   }
 
-  return $process.ExitCode
+  $process.Refresh()
+  if ($null -eq $process.ExitCode) {
+    throw "$Description completed without an exit code."
+  }
+  return [int]$process.ExitCode
 }
 
 function Invoke-DockerWithTimeout {
@@ -116,20 +127,31 @@ function Invoke-DockerWithTimeout {
   )
 
   $argumentLine = ($Arguments | ForEach-Object { ConvertTo-CommandLineArgument $_ }) -join " "
-  $process = Start-Process -FilePath "docker" -ArgumentList $argumentLine -NoNewWindow -PassThru
+  $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+  $startInfo.FileName = "docker"
+  $startInfo.Arguments = $argumentLine
+  $startInfo.UseShellExecute = $false
+
+  $process = New-Object System.Diagnostics.Process
+  $process.StartInfo = $startInfo
+  [void]$process.Start()
 
   if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
     Write-Warning "Docker command timed out after $TimeoutSeconds seconds. Stopping container $ContainerName."
     & docker stop $ContainerName 2>$null | Out-Null
     try {
-      $process.Kill()
+      & taskkill.exe /PID $process.Id /T /F 2>$null | Out-Null
     } catch {
       Write-Warning "Unable to kill docker process: $($_.Exception.Message)"
     }
     return 124
   }
 
-  return $process.ExitCode
+  $process.Refresh()
+  if ($null -eq $process.ExitCode) {
+    throw "Docker command completed without an exit code."
+  }
+  return [int]$process.ExitCode
 }
 
 if (Should-Run "dependencies") {
@@ -290,84 +312,90 @@ if (Should-Run "docker") {
   Invoke-ScanStep "Docker image scan (Trivy)" {
     $dir = Join-Path $ReportsRoot "trivy"
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
-    $imageTar = Join-Path $dir "todo-app.tar"
 
     docker build -t $ImageName .
     if ($LASTEXITCODE -ne 0) {
       throw "Docker build failed."
     }
 
-    docker save $ImageName -o $imageTar
-    if ($LASTEXITCODE -ne 0) {
-      throw "Docker save failed."
+    Ensure-DockerImage "aquasec/trivy:latest"
+
+    $trivyCacheDir = $env:TRIVY_CACHE_DIR
+    if ([string]::IsNullOrWhiteSpace($trivyCacheDir)) {
+      $trivyCacheDir = Join-Path $ProjectRoot ".trivy-cache"
+    }
+    New-Item -ItemType Directory -Force -Path $trivyCacheDir | Out-Null
+
+    $trivyDbRepository = $env:TRIVY_DB_REPOSITORY
+    if ([string]::IsNullOrWhiteSpace($trivyDbRepository)) {
+      $trivyDbRepository = "ghcr.io/aquasecurity/trivy-db:2"
     }
 
-    try {
-      Ensure-DockerImage "aquasec/trivy:latest"
+    $trivyDbMetadata = Join-Path $trivyCacheDir "db\metadata.json"
+    $trivyDbArgs = @("--db-repository", $trivyDbRepository)
+    if (Test-Path -LiteralPath $trivyDbMetadata) {
+      $trivyDbArgs = @("--skip-db-update")
+    }
 
-      $trivyCacheDir = $env:TRIVY_CACHE_DIR
-      if ([string]::IsNullOrWhiteSpace($trivyCacheDir)) {
-        $trivyCacheDir = Join-Path $ProjectRoot ".trivy-cache"
+    $jsonReport = Join-Path $dir "trivy-image.json"
+    $tableReport = Join-Path $dir "trivy-image.txt"
+    Remove-Item -LiteralPath $jsonReport, $tableReport -Force -ErrorAction SilentlyContinue
+
+    $trivyRunPrefix = @(
+      "run", "--rm",
+      "-v", "/var/run/docker.sock:/var/run/docker.sock",
+      "-v", "${dir}:/reports",
+      "-v", "${trivyCacheDir}:/root/.cache/trivy"
+    )
+
+    $trivyScanArgs = @(
+      "aquasec/trivy:latest",
+      "image"
+    ) + $trivyDbArgs + @(
+      "--no-progress",
+      "--scanners", "vuln",
+      "--severity", "HIGH,CRITICAL",
+      "--timeout", "5m"
+    )
+
+    $trivyContainerName = "todo-app-trivy-$([Guid]::NewGuid().ToString('N'))"
+    $trivyExitCode = Invoke-DockerWithTimeout `
+      -ContainerName $trivyContainerName `
+      -TimeoutSeconds 600 `
+      -Arguments ($trivyRunPrefix + @(
+        "--name", $trivyContainerName
+      ) + $trivyScanArgs + @(
+        "--format", "json",
+        "--output", "/reports/trivy-image.json",
+        "--exit-code", "0",
+        $ImageName
+      ))
+    if ($trivyExitCode -ne 0) {
+      throw "Trivy failed to complete the image scan."
+    }
+
+    $trivyResults = Get-Content $jsonReport -Raw | ConvertFrom-Json
+    $blockingVulnerabilities = @($trivyResults.Results | ForEach-Object {
+      $_.Vulnerabilities | Where-Object { $_.Severity -in @("HIGH", "CRITICAL") }
+    })
+
+    if ($blockingVulnerabilities.Count -gt 0) {
+      $trivyTableContainerName = "todo-app-trivy-$([Guid]::NewGuid().ToString('N'))"
+      $trivyTableExitCode = Invoke-DockerWithTimeout `
+        -ContainerName $trivyTableContainerName `
+        -TimeoutSeconds 600 `
+        -Arguments ($trivyRunPrefix + @(
+          "--name", $trivyTableContainerName
+        ) + $trivyScanArgs + @(
+          "--format", "table",
+          "--output", "/reports/trivy-image.txt",
+          "--exit-code", "0",
+          $ImageName
+        ))
+      if ($trivyTableExitCode -ne 0 -or -not (Test-Path $tableReport)) {
+        Write-Warning "Trivy found vulnerabilities, but the table report could not be generated."
       }
-      New-Item -ItemType Directory -Force -Path $trivyCacheDir | Out-Null
-
-      $jsonReport = Join-Path $dir "trivy-image.json"
-      $tableReport = Join-Path $dir "trivy-image.txt"
-      Remove-Item -LiteralPath $jsonReport, $tableReport -Force -ErrorAction SilentlyContinue
-
-      $trivyContainerName = "todo-app-trivy-$([Guid]::NewGuid().ToString('N'))"
-      $trivyExitCode = Invoke-DockerWithTimeout `
-        -ContainerName $trivyContainerName `
-        -TimeoutSeconds 1200 `
-        -Arguments @(
-          "run", "--rm", "--name", $trivyContainerName,
-          "-v", "${dir}:/reports",
-          "-v", "${trivyCacheDir}:/root/.cache/trivy",
-          "aquasec/trivy:latest",
-          "image",
-          "--input", "/reports/todo-app.tar",
-          "--scanners", "vuln",
-          "--severity", "HIGH,CRITICAL",
-          "--timeout", "15m",
-          "--format", "json",
-          "--output", "/reports/trivy-image.json",
-          "--exit-code", "0"
-        )
-      if ($trivyExitCode -ne 0) {
-        throw "Trivy failed to complete the image scan."
-      }
-
-      $trivyResults = Get-Content $jsonReport -Raw | ConvertFrom-Json
-      $blockingVulnerabilities = @($trivyResults.Results | ForEach-Object {
-        $_.Vulnerabilities | Where-Object { $_.Severity -in @("HIGH", "CRITICAL") }
-      })
-
-      if ($blockingVulnerabilities.Count -gt 0) {
-        $trivyTableContainerName = "todo-app-trivy-$([Guid]::NewGuid().ToString('N'))"
-        $trivyTableExitCode = Invoke-DockerWithTimeout `
-          -ContainerName $trivyTableContainerName `
-          -TimeoutSeconds 1200 `
-          -Arguments @(
-            "run", "--rm", "--name", $trivyTableContainerName,
-            "-v", "${dir}:/reports",
-            "-v", "${trivyCacheDir}:/root/.cache/trivy",
-            "aquasec/trivy:latest",
-            "image",
-            "--input", "/reports/todo-app.tar",
-            "--scanners", "vuln",
-            "--severity", "HIGH,CRITICAL",
-            "--timeout", "15m",
-            "--format", "table",
-            "--output", "/reports/trivy-image.txt",
-            "--exit-code", "0"
-          )
-        if ($trivyTableExitCode -ne 0 -or -not (Test-Path $tableReport)) {
-          Write-Warning "Trivy found vulnerabilities, but the table report could not be generated."
-        }
-        throw "Trivy found high or critical image vulnerabilities."
-      }
-    } finally {
-      Remove-Item -LiteralPath $imageTar -Force -ErrorAction SilentlyContinue
+      throw "Trivy found high or critical image vulnerabilities."
     }
   }
 }

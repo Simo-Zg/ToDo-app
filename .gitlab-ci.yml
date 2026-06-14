@@ -15,14 +15,30 @@ variables:
   APP_NAME: "todo-app"
   DEPLOY_ENV: "staging"
   DAST_TARGET_URL: "http://127.0.0.1:5000"
+  GIT_DEPTH: "5"
+  NPM_CONFIG_AUDIT: "false"
+  NPM_CONFIG_FUND: "false"
+  NPM_CONFIG_PROGRESS: "false"
+  NPM_CONFIG_PREFER_OFFLINE: "true"
+  NPM_CONFIG_CACHE: 'D:\Gitlab-Runner\npm-cache'
   SAST_SCANNERS: "sonarqube"
+  TRIVY_DB_REPOSITORY: "ghcr.io/aquasecurity/trivy-db:2"
   ZAP_TIMEOUT_SECONDS: "300"
 
+workflow:
+  auto_cancel:
+    on_new_commit: interruptible
+
 .windows_job:
+  interruptible: true
   before_script:
     - $ErrorActionPreference = "Stop"
     - node --version
     - npm --version
+    - |
+      if ($env:NPM_CONFIG_CACHE) {
+        New-Item -ItemType Directory -Force -Path "$env:NPM_CONFIG_CACHE" | Out-Null
+      }
 
 .security_after_script:
   after_script:
@@ -33,25 +49,26 @@ variables:
 
 validate_app:
   stage: validate
+  timeout: 5 minutes
   extends: .windows_job
   script:
-    - npm ci
-    - npm run check
+    - node --check server.js
 
 unit_tests:
   stage: test
+  timeout: 10 minutes
   extends: .windows_job
   script:
-    - npm ci
+    - npm i
     - npm test
 
 dependency_scan:
   stage: security
+  timeout: 8 minutes
   extends:
     - .windows_job
     - .security_after_script
   script:
-    - npm ci
     - powershell -ExecutionPolicy Bypass -File scripts\security-scan.ps1 -Mode dependencies
   artifacts:
     when: always
@@ -61,6 +78,8 @@ dependency_scan:
 
 secret_scan:
   stage: security
+  timeout: 5 minutes
+  resource_group: local-docker-scanners
   extends:
     - .windows_job
     - .security_after_script
@@ -74,6 +93,8 @@ secret_scan:
 
 sast_scan:
   stage: security
+  timeout: 10 minutes
+  resource_group: local-docker-scanners
   extends:
     - .windows_job
     - .security_after_script
@@ -88,6 +109,8 @@ sast_scan:
 
 semgrep_scan:
   stage: security
+  timeout: 8 minutes
+  resource_group: local-docker-scanners
   extends:
     - .windows_job
     - .security_after_script
@@ -101,6 +124,8 @@ semgrep_scan:
 
 docker_image_scan:
   stage: security
+  timeout: 15 minutes
+  resource_group: local-docker-scanners
   extends:
     - .windows_job
     - .security_after_script
@@ -114,6 +139,8 @@ docker_image_scan:
 
 package_image:
   stage: package
+  timeout: 10 minutes
+  resource_group: local-docker-scanners
   extends: .windows_job
   script:
     - |
@@ -135,6 +162,7 @@ package_image:
 zap_scan:
   stage: zap
   timeout: 12 minutes
+  resource_group: local-docker-scanners
   extends:
     - .windows_job
     - .security_after_script
