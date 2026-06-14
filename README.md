@@ -143,7 +143,7 @@ Pipeline stages:
 2. `test`: Jest tests.
 3. `security`: dependency scan, secret scan, SAST, Docker image scan.
 4. `package`: Docker image build and optional registry push.
-5. `dast`: ZAP scan when `/scan` sets `RUN_ZAP=true`.
+5. `zap`: OWASP ZAP scan.
 6. `deploy`: Docker Compose deployment when `/deploy` sets `RUN_DEPLOY=true`.
 7. `notify`: Telegram status notification.
 

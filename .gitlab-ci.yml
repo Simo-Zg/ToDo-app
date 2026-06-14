@@ -3,7 +3,7 @@ stages:
   - test
   - security
   - package
-  - dast
+  - zap
   - deploy
   - notify
 
@@ -131,8 +131,8 @@ package_image:
     - if: '$CI_COMMIT_BRANCH == "main"'
     - if: '$RUN_DEPLOY == "true"'
 
-zap_dast_scan:
-  stage: dast
+zap_scan:
+  stage: zap
   extends:
     - .windows_job
     - .security_after_script
