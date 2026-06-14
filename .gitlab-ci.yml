@@ -17,11 +17,6 @@ variables:
   DAST_TARGET_URL: "http://127.0.0.1:5000"
   SAST_SCANNERS: "sonarqube"
 
-cache:
-  key: "$CI_COMMIT_REF_SLUG"
-  paths:
-    - node_modules/
-
 .windows_job:
   before_script:
     - $ErrorActionPreference = "Stop"
@@ -168,7 +163,7 @@ zap_dast_scan:
     expire_in: 7 days
   rules:
     - if: '$RUN_ZAP == "true"'
-      when: on_success
+      when: always
     - when: manual
       allow_failure: true
 

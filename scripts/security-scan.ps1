@@ -105,9 +105,30 @@ if (Should-Run "dependencies") {
   Invoke-ScanStep "Dependency scan (npm audit)" {
     $dir = Join-Path $ReportsRoot "npm-audit"
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
-    $output = & npm audit --audit-level=high --json 2>&1
-    $output | Set-Content (Join-Path $dir "npm-audit.json")
-    if ($LASTEXITCODE -ne 0) {
+    $reportPath = Join-Path $dir "npm-audit.json"
+    $maxAttempts = 3
+
+    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+      $output = & npm audit --audit-level=high --json 2>&1
+      $exitCode = $LASTEXITCODE
+      $output | Set-Content $reportPath
+
+      if ($exitCode -eq 0) {
+        break
+      }
+
+      $outputText = $output -join "`n"
+      $isTransientNetworkFailure = $outputText -match "(?i)(ENOTFOUND|EAI_AGAIN|ECONNRESET|ETIMEDOUT|socket hang up|network timeout|registry\.npmjs\.org)"
+      if ($isTransientNetworkFailure -and $attempt -lt $maxAttempts) {
+        Write-Warning "npm audit failed because of a transient network/DNS error. Retrying attempt $($attempt + 1) of $maxAttempts..."
+        Start-Sleep -Seconds (10 * $attempt)
+        continue
+      }
+
+      if ($isTransientNetworkFailure) {
+        throw "npm audit failed after $maxAttempts attempts because the runner could not reach registry.npmjs.org."
+      }
+
       throw "npm audit found high or critical dependency vulnerabilities."
     }
   }
@@ -252,19 +273,42 @@ if (Should-Run "docker") {
 
     Ensure-DockerImage "aquasec/trivy:latest"
 
-    & docker run --rm -v "${dir}:/reports" aquasec/trivy:latest image `
+    $trivyCacheDir = Join-Path ([System.IO.Path]::GetTempPath()) "todo-app-trivy-cache"
+    New-Item -ItemType Directory -Force -Path $trivyCacheDir | Out-Null
+
+    $jsonReport = Join-Path $dir "trivy-image.json"
+    $tableReport = Join-Path $dir "trivy-image.txt"
+    Remove-Item -LiteralPath $jsonReport, $tableReport -Force -ErrorAction SilentlyContinue
+
+    & docker run --rm -v "${dir}:/reports" -v "${trivyCacheDir}:/root/.cache/trivy" aquasec/trivy:latest image `
       --input /reports/todo-app.tar `
+      --scanners vuln `
       --severity HIGH,CRITICAL `
+      --timeout 15m `
       --format json `
       --output /reports/trivy-image.json `
-      --exit-code 1
+      --exit-code 0
     if ($LASTEXITCODE -ne 0) {
-      & docker run --rm -v "${dir}:/reports" aquasec/trivy:latest image `
+      throw "Trivy failed to complete the image scan."
+    }
+
+    $trivyResults = Get-Content $jsonReport -Raw | ConvertFrom-Json
+    $blockingVulnerabilities = @($trivyResults.Results | ForEach-Object {
+      $_.Vulnerabilities | Where-Object { $_.Severity -in @("HIGH", "CRITICAL") }
+    })
+
+    if ($blockingVulnerabilities.Count -gt 0) {
+      & docker run --rm -v "${dir}:/reports" -v "${trivyCacheDir}:/root/.cache/trivy" aquasec/trivy:latest image `
         --input /reports/todo-app.tar `
+        --scanners vuln `
         --severity HIGH,CRITICAL `
+        --timeout 15m `
         --format table `
         --output /reports/trivy-image.txt `
         --exit-code 0
+      if ($LASTEXITCODE -ne 0 -or -not (Test-Path $tableReport)) {
+        Write-Warning "Trivy found vulnerabilities, but the table report could not be generated."
+      }
       throw "Trivy found high or critical image vulnerabilities."
     }
   }

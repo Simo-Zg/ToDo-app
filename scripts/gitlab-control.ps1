@@ -78,6 +78,7 @@ switch ($Action) {
     $body = @{
       ref = $Ref
       "variables[RUN_ZAP]" = "true"
+      "variables[RUN_SEMGREP]" = "true"
       "variables[SECURITY_ONLY]" = "true"
     }
     $pipeline = Invoke-GitLabJson -Method Post -Path "/pipeline" -Body $body

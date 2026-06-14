@@ -1,5 +1,7 @@
 FROM node:24-alpine
 
+RUN apk upgrade --no-cache libcrypto3 libssl3
+
 WORKDIR /app
 ENV NODE_ENV=production
 
