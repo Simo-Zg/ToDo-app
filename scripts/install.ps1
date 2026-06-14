@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-  [switch]$ForceEnv
+  [switch]$ForceEnv,
+  [switch]$SkipNpmInstall
 )
 
 $ErrorActionPreference = "Stop"
@@ -17,7 +18,12 @@ function Assert-Command {
 function New-HexSecret {
   param([int]$Bytes = 32)
   $buffer = New-Object byte[] $Bytes
-  [System.Security.Cryptography.RandomNumberGenerator]::Fill($buffer)
+  $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+  try {
+    $rng.GetBytes($buffer)
+  } finally {
+    $rng.Dispose()
+  }
   return (($buffer | ForEach-Object { $_.ToString("x2") }) -join "")
 }
 
@@ -38,7 +44,9 @@ if ((-not (Test-Path ".env")) -or $ForceEnv) {
   Write-Host ".env already exists. Use -ForceEnv to regenerate it."
 }
 
-npm install
+if (-not $SkipNpmInstall) {
+  npm i
+}
 
 Write-Host ""
 Write-Host "Installation complete."
