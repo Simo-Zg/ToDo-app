@@ -12,6 +12,7 @@ info.txt
 tests
 npm-debug.log
 reports
+.trivy-cache
 coverage
 docs
 openclaw

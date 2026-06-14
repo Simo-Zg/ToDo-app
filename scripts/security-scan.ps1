@@ -271,45 +271,49 @@ if (Should-Run "docker") {
       throw "Docker save failed."
     }
 
-    Ensure-DockerImage "aquasec/trivy:latest"
+    try {
+      Ensure-DockerImage "aquasec/trivy:latest"
 
-    $trivyCacheDir = Join-Path ([System.IO.Path]::GetTempPath()) "todo-app-trivy-cache"
-    New-Item -ItemType Directory -Force -Path $trivyCacheDir | Out-Null
+      $trivyCacheDir = Join-Path $ProjectRoot ".trivy-cache"
+      New-Item -ItemType Directory -Force -Path $trivyCacheDir | Out-Null
 
-    $jsonReport = Join-Path $dir "trivy-image.json"
-    $tableReport = Join-Path $dir "trivy-image.txt"
-    Remove-Item -LiteralPath $jsonReport, $tableReport -Force -ErrorAction SilentlyContinue
+      $jsonReport = Join-Path $dir "trivy-image.json"
+      $tableReport = Join-Path $dir "trivy-image.txt"
+      Remove-Item -LiteralPath $jsonReport, $tableReport -Force -ErrorAction SilentlyContinue
 
-    & docker run --rm -v "${dir}:/reports" -v "${trivyCacheDir}:/root/.cache/trivy" aquasec/trivy:latest image `
-      --input /reports/todo-app.tar `
-      --scanners vuln `
-      --severity HIGH,CRITICAL `
-      --timeout 15m `
-      --format json `
-      --output /reports/trivy-image.json `
-      --exit-code 0
-    if ($LASTEXITCODE -ne 0) {
-      throw "Trivy failed to complete the image scan."
-    }
-
-    $trivyResults = Get-Content $jsonReport -Raw | ConvertFrom-Json
-    $blockingVulnerabilities = @($trivyResults.Results | ForEach-Object {
-      $_.Vulnerabilities | Where-Object { $_.Severity -in @("HIGH", "CRITICAL") }
-    })
-
-    if ($blockingVulnerabilities.Count -gt 0) {
       & docker run --rm -v "${dir}:/reports" -v "${trivyCacheDir}:/root/.cache/trivy" aquasec/trivy:latest image `
         --input /reports/todo-app.tar `
         --scanners vuln `
         --severity HIGH,CRITICAL `
         --timeout 15m `
-        --format table `
-        --output /reports/trivy-image.txt `
+        --format json `
+        --output /reports/trivy-image.json `
         --exit-code 0
-      if ($LASTEXITCODE -ne 0 -or -not (Test-Path $tableReport)) {
-        Write-Warning "Trivy found vulnerabilities, but the table report could not be generated."
+      if ($LASTEXITCODE -ne 0) {
+        throw "Trivy failed to complete the image scan."
       }
-      throw "Trivy found high or critical image vulnerabilities."
+
+      $trivyResults = Get-Content $jsonReport -Raw | ConvertFrom-Json
+      $blockingVulnerabilities = @($trivyResults.Results | ForEach-Object {
+        $_.Vulnerabilities | Where-Object { $_.Severity -in @("HIGH", "CRITICAL") }
+      })
+
+      if ($blockingVulnerabilities.Count -gt 0) {
+        & docker run --rm -v "${dir}:/reports" -v "${trivyCacheDir}:/root/.cache/trivy" aquasec/trivy:latest image `
+          --input /reports/todo-app.tar `
+          --scanners vuln `
+          --severity HIGH,CRITICAL `
+          --timeout 15m `
+          --format table `
+          --output /reports/trivy-image.txt `
+          --exit-code 0
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path $tableReport)) {
+          Write-Warning "Trivy found vulnerabilities, but the table report could not be generated."
+        }
+        throw "Trivy found high or critical image vulnerabilities."
+      }
+    } finally {
+      Remove-Item -LiteralPath $imageTar -Force -ErrorAction SilentlyContinue
     }
   }
 }

@@ -20,6 +20,7 @@ info.txt
 *.tfplan
 .tfvars
 reports/
+.trivy-cache/
 coverage/
 *.tmp
 docs/
