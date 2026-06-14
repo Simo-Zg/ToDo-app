@@ -45,13 +45,6 @@ workflow:
         New-Item -ItemType Directory -Force -Path "$env:NPM_CONFIG_CACHE" | Out-Null
       }
 
-.security_after_script:
-  after_script:
-    - |
-      if ($env:CI_JOB_STATUS -ne "success") {
-        powershell -ExecutionPolicy Bypass -File scripts\notify-telegram.ps1 -Message 'Security job failed in pipeline $env:CI_PIPELINE_ID: $env:CI_JOB_NAME. $env:CI_PIPELINE_URL'
-      }
-
 validate_app:
   stage: validate
   timeout: 5 minutes
@@ -70,9 +63,7 @@ unit_tests:
 dependency_scan:
   stage: security
   timeout: 8 minutes
-  extends:
-    - .windows_job
-    - .security_after_script
+  extends: .windows_job
   script:
     - powershell -ExecutionPolicy Bypass -File scripts\security-scan.ps1 -Mode dependencies
   artifacts:
@@ -85,9 +76,7 @@ secret_scan:
   stage: security
   timeout: 5 minutes
   resource_group: local-docker-scanners
-  extends:
-    - .windows_job
-    - .security_after_script
+  extends: .windows_job
   script:
     - powershell -ExecutionPolicy Bypass -File scripts\security-scan.ps1 -Mode secrets
   artifacts:
@@ -100,9 +89,7 @@ sast_scan:
   stage: security
   timeout: 10 minutes
   resource_group: local-docker-scanners
-  extends:
-    - .windows_job
-    - .security_after_script
+  extends: .windows_job
   script:
     - powershell -ExecutionPolicy Bypass -File scripts\security-scan.ps1 -Mode sast -SastScanners "$env:SAST_SCANNERS"
   artifacts:
@@ -116,9 +103,7 @@ semgrep_scan:
   stage: security
   timeout: 8 minutes
   resource_group: local-docker-scanners
-  extends:
-    - .windows_job
-    - .security_after_script
+  extends: .windows_job
   script:
     - powershell -ExecutionPolicy Bypass -File scripts\security-scan.ps1 -Mode semgrep
   artifacts:
@@ -131,9 +116,7 @@ docker_image_scan:
   stage: security
   timeout: 15 minutes
   resource_group: local-docker-scanners
-  extends:
-    - .windows_job
-    - .security_after_script
+  extends: .windows_job
   script:
     - powershell -ExecutionPolicy Bypass -File scripts\security-scan.ps1 -Mode docker -ImageName "todo-app:$env:CI_COMMIT_SHORT_SHA"
   artifacts:
@@ -186,9 +169,7 @@ zap_scan:
   stage: zap
   timeout: 8 minutes
   resource_group: local-docker-scanners
-  extends:
-    - .windows_job
-    - .security_after_script
+  extends: .windows_job
   script:
     - |
       if (-not (Test-Path ".env")) {
@@ -204,10 +185,6 @@ zap_scan:
       powershell -ExecutionPolicy Bypass -File scripts\security-scan.ps1 -Mode zap -TargetUrl "$env:DAST_TARGET_URL" -ZapTimeoutSeconds "$env:ZAP_TIMEOUT_SECONDS"
   after_script:
     - docker compose down --remove-orphans
-    - |
-      if ($env:CI_JOB_STATUS -ne "success") {
-        powershell -ExecutionPolicy Bypass -File scripts\notify-telegram.ps1 -Message 'ZAP DAST failed in pipeline $env:CI_PIPELINE_ID. $env:CI_PIPELINE_URL'
-      }
   artifacts:
     when: always
     paths:
