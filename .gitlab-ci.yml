@@ -177,12 +177,10 @@ aws_ecr_package:
       - reports/aws/deploy.env
     expire_in: 7 days
   rules:
-    - if: '$RUN_AWS_DEPLOY == "true"'
-    - if: '$RUN_AWS_STAGING == "true"'
-    - if: '$RUN_AWS_PRODUCTION == "true"'
-    - if: '$CI_COMMIT_BRANCH'
-      when: manual
-      allow_failure: true
+    - if: '$RUN_AWS_STAGING == "true" || $RUN_AWS_PRODUCTION == "true"'
+      when: on_success
+      allow_failure: false
+    - when: never
 
 zap_scan:
   stage: zap
@@ -222,36 +220,34 @@ deploy_aws_staging:
   timeout: 10 minutes
   resource_group: aws-k8s-deploy
   extends: .windows_job
-  needs:
-    - job: aws_ecr_package
-      artifacts: true
+  dependencies:
+    - aws_ecr_package
   script:
-    - powershell -ExecutionPolicy Bypass -File scripts\deploy-aws-k8s.ps1 -Environment staging -AwsRegion "$env:AWS_REGION" -ClusterName "$env:AWS_EKS_CLUSTER_NAME" -Namespace "$env:K8S_STAGING_NAMESPACE" -Image "$env:K8S_IMAGE" -ServiceType "$env:K8S_SERVICE_TYPE"
+    - powershell -ExecutionPolicy Bypass -File scripts\deploy-aws-k8s.ps1 -Environment staging -AwsRegion "$env:AWS_REGION" -ClusterName "$env:AWS_EKS_CLUSTER_NAME" -Namespace "$env:K8S_STAGING_NAMESPACE" -Image "$env:K8S_IMAGE" -ServiceType "$env:K8S_SERVICE_TYPE" -RequireSecrets
   environment:
     name: aws-staging
   rules:
-    - if: '$RUN_AWS_DEPLOY == "true" || $RUN_AWS_STAGING == "true"'
-    - if: '$CI_COMMIT_BRANCH'
-      when: manual
-      allow_failure: true
+    - if: '$RUN_AWS_STAGING == "true"'
+      when: on_success
+      allow_failure: false
+    - when: never
 
 deploy_aws_production:
   stage: deploy
   timeout: 10 minutes
   resource_group: aws-k8s-deploy
   extends: .windows_job
-  needs:
-    - job: aws_ecr_package
-      artifacts: true
+  dependencies:
+    - aws_ecr_package
   script:
     - powershell -ExecutionPolicy Bypass -File scripts\deploy-aws-k8s.ps1 -Environment production -AwsRegion "$env:AWS_REGION" -ClusterName "$env:AWS_EKS_CLUSTER_NAME" -Namespace "$env:K8S_PRODUCTION_NAMESPACE" -Image "$env:K8S_IMAGE" -ServiceType "$env:K8S_SERVICE_TYPE" -RequireSecrets
   environment:
     name: aws-production
   rules:
     - if: '$RUN_AWS_PRODUCTION == "true"'
-    - if: '$CI_COMMIT_BRANCH == "main"'
-      when: manual
-      allow_failure: true
+      when: on_success
+      allow_failure: false
+    - when: never
 
 notify_pipeline:
   stage: notify

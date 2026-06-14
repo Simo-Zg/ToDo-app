@@ -130,6 +130,25 @@ function Wait-JobSuccess {
   throw "Timed out waiting for job '$Name' to finish successfully in pipeline #$Id."
 }
 
+function Wait-PipelineTerminal {
+  param(
+    [string]$Id,
+    [int]$TimeoutSeconds = 3600
+  )
+
+  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  while ((Get-Date) -lt $deadline) {
+    $pipeline = Invoke-GitLabJson -Method Get -Path "/pipelines/$Id"
+    if ($pipeline.status -in @("success", "failed", "canceled", "skipped")) {
+      return $pipeline
+    }
+
+    Start-Sleep -Seconds 20
+  }
+
+  throw "Timed out waiting for pipeline #$Id to finish."
+}
+
 switch ($Action) {
   "run" {
     $pipeline = Invoke-GitLabJson -Method Post -Path "/pipeline" -Body @{ ref = $Ref }
@@ -147,22 +166,29 @@ switch ($Action) {
       throw "DeployEnv must be 'staging' or 'production' for AWS EKS deployment."
     }
 
-    $pipeline = Invoke-GitLabJson -Method Post -Path "/pipeline" -Body @{ ref = $Ref }
+    $variables = @(
+      @{ key = "DEPLOY_ENV"; value = $target }
+    )
+    if ($target -eq "production") {
+      $variables += @{ key = "RUN_AWS_PRODUCTION"; value = "true" }
+    } else {
+      $variables += @{ key = "RUN_AWS_STAGING"; value = "true" }
+    }
+
+    $pipeline = Invoke-GitLabJson -Method Post -Path "/pipeline" -Body @{
+      ref       = $Ref
+      variables = $variables
+    }
     Write-PipelineSummary $pipeline
 
-    $packageJob = Wait-PipelineJob -Id $pipeline.id -Name "aws_ecr_package" -Statuses @("manual")
-    Play-GitLabJob -Job $packageJob | Out-Null
-    Wait-JobSuccess -Id $pipeline.id -Name "aws_ecr_package"
-
-    $deployJobName = "deploy_aws_$target"
-    $deployJob = Wait-PipelineJob -Id $pipeline.id -Name $deployJobName -Statuses @("manual")
-    Play-GitLabJob -Job $deployJob | Out-Null
-    Wait-JobSuccess -Id $pipeline.id -Name $deployJobName
-
-    $pipeline = Invoke-GitLabJson -Method Get -Path "/pipelines/$($pipeline.id)"
+    $pipeline = Wait-PipelineTerminal -Id $pipeline.id
     Write-Output ""
-    Write-Output "AWS EKS deploy completed for '$target'."
     Write-PipelineSummary $pipeline
+    if ($pipeline.status -ne "success") {
+      throw "AWS EKS deploy pipeline finished with status '$($pipeline.status)'."
+    }
+
+    Write-Output "AWS EKS deploy completed for '$target'."
   }
 
   "status" {

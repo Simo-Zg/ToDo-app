@@ -123,7 +123,21 @@ K8S_STAGING_NAMESPACE=todo-staging
 K8S_PRODUCTION_NAMESPACE=todo-production
 ```
 
-Do not commit real secrets. Use `.env.example` as the template.
+Do not commit real secrets. Use `.env.example` as the local name template only.
+For GitLab pipelines, store sensitive values as masked CI/CD variables or expose them through HashiCorp Vault with the same environment variable names:
+
+- `GITLAB_API_TOKEN`
+- `TELEGRAM_BOT_TOKEN`
+- `TELEGRAM_CHAT_ID`
+- `SEMGREP_APP_TOKEN`
+- `SONAR_TOKEN`
+- `AWS_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY`
+- `AWS_SESSION_TOKEN` when temporary AWS credentials are used
+- `JWT_SECRET`
+- `JWT_REFRESH_SECRET`
+- `SECRET_PASSWORD`
+- `AES_KEY`
 
 Azure is intentionally not used in this project. The previous Azure Terraform path was removed to avoid accidental billing.
 
@@ -150,12 +164,12 @@ Deploy from GitLab/OpenClaw:
 /deploy staging AI-Agent
 ```
 
-The deploy command creates a normal pipeline, then plays the manual AWS jobs through the GitLab API:
+The deploy command creates a deploy pipeline with AWS variables enabled. AWS jobs are required in that pipeline, so an AWS package or deployment failure fails the pipeline:
 
 1. `aws_ecr_package`: build and push the Todo image to AWS ECR.
 2. `deploy_aws_staging`: deploy `todo-app` and `mongodb` to EKS.
 
-Production is available as a separate manual job named `deploy_aws_production`, but it requires production secrets and should only be used deliberately.
+Production is available through `/deploy production <ref>`, but it requires production secrets and should only be used deliberately.
 
 ## Local Runner
 
@@ -189,7 +203,7 @@ Pipeline stages:
 3. `security`: dependency scan, secret scan, SAST, Docker image scan.
 4. `package`: Docker image build and optional registry push.
 5. `zap`: OWASP ZAP scan.
-6. `deploy`: AWS EKS deployment through manual jobs or `/deploy staging`.
+6. `deploy`: AWS EKS deployment when `/deploy staging` or `/deploy production` enables AWS jobs.
 7. `notify`: Telegram status notification.
 
 ## Deliverables

@@ -23,18 +23,6 @@ function Assert-Command {
   }
 }
 
-function New-HexSecret {
-  param([int]$Bytes = 32)
-  $buffer = New-Object byte[] $Bytes
-  $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
-  try {
-    $rng.GetBytes($buffer)
-  } finally {
-    $rng.Dispose()
-  }
-  return (($buffer | ForEach-Object { $_.ToString("x2") }) -join "")
-}
-
 function Get-SecretValue {
   param(
     [string]$Name,
@@ -47,7 +35,7 @@ function Get-SecretValue {
     $value = $Fallback
   }
   if ($Required -and [string]::IsNullOrWhiteSpace($value)) {
-    throw "$Name is required for $Environment deployment."
+    throw "$Name is required for $Environment deployment. Store it as a masked GitLab CI/CD variable or expose it from HashiCorp Vault."
   }
   return $value
 }
@@ -78,10 +66,10 @@ if ([string]::IsNullOrWhiteSpace($ServiceType)) {
 }
 
 $mongoDb = Get-SecretValue -Name "MONGO_DB" -Fallback "todo_devsecops"
-$jwtSecret = Get-SecretValue -Name "JWT_SECRET" -Fallback (New-HexSecret -Bytes 32) -Required:$RequireSecrets
-$jwtRefreshSecret = Get-SecretValue -Name "JWT_REFRESH_SECRET" -Fallback (New-HexSecret -Bytes 32) -Required:$RequireSecrets
-$secretPassword = Get-SecretValue -Name "SECRET_PASSWORD" -Fallback (New-HexSecret -Bytes 16) -Required:$RequireSecrets
-$aesKey = Get-SecretValue -Name "AES_KEY" -Fallback (New-HexSecret -Bytes 32) -Required:$RequireSecrets
+$jwtSecret = Get-SecretValue -Name "JWT_SECRET" -Required
+$jwtRefreshSecret = Get-SecretValue -Name "JWT_REFRESH_SECRET" -Required
+$secretPassword = Get-SecretValue -Name "SECRET_PASSWORD" -Required
+$aesKey = Get-SecretValue -Name "AES_KEY" -Required
 
 Write-Host "Updating kubeconfig for EKS cluster '$ClusterName' in $AwsRegion"
 & aws eks update-kubeconfig --name $ClusterName --region $AwsRegion
