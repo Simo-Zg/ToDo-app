@@ -172,6 +172,7 @@ zap_scan:
         powershell -ExecutionPolicy Bypass -File scripts\install.ps1 -ForceEnv
       }
       docker compose down --remove-orphans
+      docker rm -f todo-app todo-mongodb 2>$null | Out-Null
       docker compose up -d --build
       powershell -ExecutionPolicy Bypass -File scripts\wait-http.ps1 -Url "$env:DAST_TARGET_URL/health" -TimeoutSeconds 120
       powershell -ExecutionPolicy Bypass -File scripts\security-scan.ps1 -Mode zap -TargetUrl "$env:DAST_TARGET_URL" -ZapTimeoutSeconds "$env:ZAP_TIMEOUT_SECONDS"

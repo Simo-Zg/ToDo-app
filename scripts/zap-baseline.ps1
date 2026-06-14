@@ -4,6 +4,7 @@ param(
   [string]$ZapPath = $env:ZAP_PATH,
   [string]$ReportDir,
   [int]$TimeoutSeconds = 300,
+  [int]$ZapPort = 8090,
   [bool]$FailOnTimeout = $false
 )
 
@@ -65,39 +66,89 @@ New-Item -ItemType Directory -Force -Path $ReportDir | Out-Null
 
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $htmlReport = Join-Path $ReportDir "zap-$timestamp.html"
-$timeoutReport = Join-Path $ReportDir "zap-timeout-$timestamp.txt"
+$summaryReport = Join-Path $ReportDir "zap-summary-$timestamp.txt"
 
-Write-Host "Running ZAP quick scan against $TargetUrl"
+Write-Host "Running ZAP passive baseline against $TargetUrl"
 Write-Host "ZAP: $zap"
+Write-Host "ZAP API: http://127.0.0.1:$ZapPort"
 Write-Host "Timeout: $TimeoutSeconds seconds"
 
 $zapDir = Split-Path $zap -Parent
-$zapArgs = @("-cmd", "-quickurl", $TargetUrl, "-quickprogress", "-quickout", $htmlReport)
+$zapArgs = @(
+  "-daemon",
+  "-host", "127.0.0.1",
+  "-port", "$ZapPort",
+  "-config", "api.disablekey=true",
+  "-config", "database.recoverylog=false"
+)
 $zapArgumentLine = '"' + $zap + '" ' + (($zapArgs | ForEach-Object { ConvertTo-CommandLineArgument $_ }) -join " ")
-$process = Start-Process -FilePath "cmd.exe" -ArgumentList @("/c", $zapArgumentLine) -WorkingDirectory $zapDir -NoNewWindow -PassThru
+$process = Start-Process -FilePath "cmd.exe" -ArgumentList @("/c", $zapArgumentLine) -WorkingDirectory $zapDir -WindowStyle Hidden -PassThru
 
-if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
-  Write-Warning "ZAP scan timed out after $TimeoutSeconds seconds. Stopping process tree."
-  & taskkill.exe /PID $process.Id /T /F 2>$null | Out-Null
+try {
+  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  $apiBase = "http://127.0.0.1:$ZapPort"
+  $versionUri = "$apiBase/JSON/core/view/version/"
 
-  @(
-    "ZAP bounded scan reached the configured timeout.",
-    "TargetUrl=$TargetUrl",
-    "TimeoutSeconds=$TimeoutSeconds",
-    "CompletedAt=$(Get-Date -Format o)",
-    "HtmlReport=$htmlReport"
-  ) | Set-Content -Path $timeoutReport
-
-  if ($FailOnTimeout) {
-    throw "ZAP scan timed out after $TimeoutSeconds seconds."
+  while ((Get-Date) -lt $deadline) {
+    try {
+      $version = Invoke-RestMethod -Uri $versionUri -TimeoutSec 3
+      if ($version.version) {
+        Write-Host "ZAP daemon is ready: $($version.version)"
+        break
+      }
+    } catch {
+      Start-Sleep -Seconds 2
+    }
   }
 
-  Write-Host "ZAP timeout summary: $timeoutReport"
-  return
-}
+  if ((Get-Date) -ge $deadline) {
+    if ($FailOnTimeout) {
+      throw "ZAP daemon did not become ready within $TimeoutSeconds seconds."
+    }
+    "ZAP daemon startup timed out after $TimeoutSeconds seconds." | Set-Content -Path $summaryReport
+    Write-Warning "ZAP daemon startup timed out. Summary: $summaryReport"
+    return
+  }
 
-if ($process.ExitCode -ne 0) {
-  throw "ZAP scan failed with exit code $($process.ExitCode)"
-}
+  Write-Host "Sending target request through ZAP proxy..."
+  try {
+    Invoke-WebRequest -Uri $TargetUrl -Proxy "http://127.0.0.1:$ZapPort" -UseBasicParsing -TimeoutSec 20 | Out-Null
+  } catch {
+    Write-Warning "The proxied target request failed: $($_.Exception.Message)"
+  }
 
-Write-Host "ZAP report: $htmlReport"
+  Start-Sleep -Seconds 5
+  $encodedTarget = [System.Uri]::EscapeDataString($TargetUrl)
+  $alertsResponse = Invoke-RestMethod -Uri "$apiBase/JSON/core/view/alerts/?baseurl=$encodedTarget" -TimeoutSec 15
+  $alerts = @($alertsResponse.alerts)
+  $highCount = @($alerts | Where-Object { $_.risk -eq "High" }).Count
+  $mediumCount = @($alerts | Where-Object { $_.risk -eq "Medium" }).Count
+  $lowCount = @($alerts | Where-Object { $_.risk -eq "Low" }).Count
+
+  $html = (Invoke-WebRequest -Uri "$apiBase/OTHER/core/other/htmlreport/" -UseBasicParsing -TimeoutSec 30).Content
+  Set-Content -Path $htmlReport -Value $html
+
+  @(
+    "ZAP passive baseline completed.",
+    "TargetUrl=$TargetUrl",
+    "CompletedAt=$(Get-Date -Format o)",
+    "HighAlerts=$highCount",
+    "MediumAlerts=$mediumCount",
+    "LowAlerts=$lowCount",
+    "HtmlReport=$htmlReport"
+  ) | Set-Content -Path $summaryReport
+
+  Write-Host "ZAP summary: $summaryReport"
+  Write-Host "ZAP report: $htmlReport"
+} finally {
+  try {
+    Invoke-RestMethod -Uri "http://127.0.0.1:$ZapPort/JSON/core/action/shutdown/" -TimeoutSec 5 | Out-Null
+  } catch {
+    Write-Warning "ZAP API shutdown failed or ZAP was already stopped: $($_.Exception.Message)"
+  }
+
+  Start-Sleep -Seconds 3
+  if (-not $process.HasExited) {
+    Start-Process -FilePath "taskkill.exe" -ArgumentList @("/PID", "$($process.Id)", "/T", "/F") -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+  }
+}
