@@ -20,6 +20,25 @@ function Assert-Command {
   }
 }
 
+function Invoke-NativeCapture {
+  param(
+    [string]$FilePath,
+    [string[]]$Arguments
+  )
+
+  $previousErrorActionPreference = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    $output = & $FilePath @Arguments 2>&1
+    return [pscustomobject]@{
+      ExitCode = $LASTEXITCODE
+      Output   = ($output | Out-String).Trim()
+    }
+  } finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
+}
+
 Assert-Command aws
 Assert-Command docker
 
@@ -37,8 +56,20 @@ if ([string]::IsNullOrWhiteSpace($ImageTag)) {
   $ImageTag = "local"
 }
 
+if ([string]::IsNullOrWhiteSpace($DotEnvPath)) {
+  $DotEnvPath = Join-Path $ProjectRoot "reports\aws\deploy.env"
+}
+
+$dotEnvDir = Split-Path $DotEnvPath -Parent
+New-Item -ItemType Directory -Force -Path $dotEnvDir | Out-Null
+"AWS_ECR_IMAGE=unavailable" | Set-Content -Path $DotEnvPath -Encoding ascii
+
 if ([string]::IsNullOrWhiteSpace($AwsAccountId)) {
-  $AwsAccountId = (& aws sts get-caller-identity --query Account --output text).Trim()
+  $identity = Invoke-NativeCapture -FilePath "aws" -Arguments @("sts", "get-caller-identity", "--query", "Account", "--output", "text")
+  if ($identity.ExitCode -ne 0) {
+    throw "Unable to determine AWS account with sts get-caller-identity. $($identity.Output)"
+  }
+  $AwsAccountId = $identity.Output.Trim()
 }
 if ([string]::IsNullOrWhiteSpace($AwsAccountId)) {
   throw "AWS_ACCOUNT_ID is required or aws sts get-caller-identity must be available."
@@ -48,18 +79,28 @@ $registry = "$AwsAccountId.dkr.ecr.$AwsRegion.amazonaws.com"
 $imageUri = "$registry/$RepositoryName`:$ImageTag"
 
 Write-Host "Ensuring ECR repository exists: $RepositoryName"
-& aws ecr describe-repositories --repository-names $RepositoryName --region $AwsRegion *> $null
-if ($LASTEXITCODE -ne 0) {
-  & aws ecr create-repository --repository-name $RepositoryName --region $AwsRegion | Out-Null
-  if ($LASTEXITCODE -ne 0) {
-    throw "Unable to create ECR repository '$RepositoryName'."
+$describe = Invoke-NativeCapture -FilePath "aws" -Arguments @(
+  "ecr", "describe-repositories",
+  "--repository-names", $RepositoryName,
+  "--region", $AwsRegion
+)
+if ($describe.ExitCode -ne 0) {
+  Write-Host "ECR repository was not described successfully. Attempting create..."
+  $create = Invoke-NativeCapture -FilePath "aws" -Arguments @(
+    "ecr", "create-repository",
+    "--repository-name", $RepositoryName,
+    "--region", $AwsRegion
+  )
+  if ($create.ExitCode -ne 0) {
+    throw "Unable to create ECR repository '$RepositoryName'. $($create.Output)"
   }
 }
 
 Write-Host "Logging Docker into ECR: $registry"
-$password = & aws ecr get-login-password --region $AwsRegion
-if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($password)) {
-  throw "Unable to get ECR login password."
+$login = Invoke-NativeCapture -FilePath "aws" -Arguments @("ecr", "get-login-password", "--region", $AwsRegion)
+$password = $login.Output
+if ($login.ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($password)) {
+  throw "Unable to get ECR login password. $($login.Output)"
 }
 $password | docker login --username AWS --password-stdin $registry
 if ($LASTEXITCODE -ne 0) {
@@ -83,12 +124,6 @@ if ($LASTEXITCODE -ne 0) {
   throw "Docker push to ECR failed."
 }
 
-if ([string]::IsNullOrWhiteSpace($DotEnvPath)) {
-  $DotEnvPath = Join-Path $ProjectRoot "reports\aws\deploy.env"
-}
-
-$dotEnvDir = Split-Path $DotEnvPath -Parent
-New-Item -ItemType Directory -Force -Path $dotEnvDir | Out-Null
 @(
   "AWS_ECR_IMAGE=$imageUri",
   "K8S_IMAGE=$imageUri",
