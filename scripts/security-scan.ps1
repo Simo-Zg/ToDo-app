@@ -56,15 +56,22 @@ function Should-Run {
 function Ensure-DockerImage {
   param([string]$Image)
 
-  $inspectOutput = & docker image inspect $Image 2>&1
-  if ($LASTEXITCODE -ne 0) {
+  $inspectExitCode = Invoke-ProcessWithTimeout `
+    -FilePath "docker" `
+    -Arguments @("image", "inspect", "--format", "{{.Id}}", $Image) `
+    -TimeoutSeconds 60 `
+    -Description "Docker image inspect $Image"
+
+  if ($inspectExitCode -ne 0) {
     Write-Host "Docker image not found locally. Pulling $Image..."
-    & docker pull $Image
-    if ($LASTEXITCODE -ne 0) {
+    $pullExitCode = Invoke-ProcessWithTimeout `
+      -FilePath "docker" `
+      -Arguments @("pull", $Image) `
+      -TimeoutSeconds 600 `
+      -Description "Docker pull $Image"
+    if ($pullExitCode -ne 0) {
       throw "Unable to pull Docker image $Image."
     }
-  } else {
-    $null = $inspectOutput
   }
 }
 
@@ -76,6 +83,29 @@ function ConvertTo-CommandLineArgument {
   }
 
   return $Value
+}
+
+function Invoke-ProcessWithTimeout {
+  param(
+    [string]$FilePath,
+    [string[]]$Arguments,
+    [int]$TimeoutSeconds = 120,
+    [string]$Description = $FilePath
+  )
+
+  $argumentLine = ($Arguments | ForEach-Object { ConvertTo-CommandLineArgument $_ }) -join " "
+  $process = Start-Process -FilePath $FilePath -ArgumentList $argumentLine -NoNewWindow -PassThru
+
+  if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
+    try {
+      $process.Kill()
+    } catch {
+      Write-Warning "Unable to kill timed-out process: $($_.Exception.Message)"
+    }
+    throw "$Description timed out after $TimeoutSeconds seconds."
+  }
+
+  return $process.ExitCode
 }
 
 function Invoke-DockerWithTimeout {
@@ -275,22 +305,35 @@ if (Should-Run "docker") {
     try {
       Ensure-DockerImage "aquasec/trivy:latest"
 
-      $trivyCacheDir = Join-Path $ProjectRoot ".trivy-cache"
+      $trivyCacheDir = $env:TRIVY_CACHE_DIR
+      if ([string]::IsNullOrWhiteSpace($trivyCacheDir)) {
+        $trivyCacheDir = Join-Path $ProjectRoot ".trivy-cache"
+      }
       New-Item -ItemType Directory -Force -Path $trivyCacheDir | Out-Null
 
       $jsonReport = Join-Path $dir "trivy-image.json"
       $tableReport = Join-Path $dir "trivy-image.txt"
       Remove-Item -LiteralPath $jsonReport, $tableReport -Force -ErrorAction SilentlyContinue
 
-      & docker run --rm -v "${dir}:/reports" -v "${trivyCacheDir}:/root/.cache/trivy" aquasec/trivy:latest image `
-        --input /reports/todo-app.tar `
-        --scanners vuln `
-        --severity HIGH,CRITICAL `
-        --timeout 15m `
-        --format json `
-        --output /reports/trivy-image.json `
-        --exit-code 0
-      if ($LASTEXITCODE -ne 0) {
+      $trivyContainerName = "todo-app-trivy-$([Guid]::NewGuid().ToString('N'))"
+      $trivyExitCode = Invoke-DockerWithTimeout `
+        -ContainerName $trivyContainerName `
+        -TimeoutSeconds 1200 `
+        -Arguments @(
+          "run", "--rm", "--name", $trivyContainerName,
+          "-v", "${dir}:/reports",
+          "-v", "${trivyCacheDir}:/root/.cache/trivy",
+          "aquasec/trivy:latest",
+          "image",
+          "--input", "/reports/todo-app.tar",
+          "--scanners", "vuln",
+          "--severity", "HIGH,CRITICAL",
+          "--timeout", "15m",
+          "--format", "json",
+          "--output", "/reports/trivy-image.json",
+          "--exit-code", "0"
+        )
+      if ($trivyExitCode -ne 0) {
         throw "Trivy failed to complete the image scan."
       }
 
@@ -300,15 +343,25 @@ if (Should-Run "docker") {
       })
 
       if ($blockingVulnerabilities.Count -gt 0) {
-        & docker run --rm -v "${dir}:/reports" -v "${trivyCacheDir}:/root/.cache/trivy" aquasec/trivy:latest image `
-          --input /reports/todo-app.tar `
-          --scanners vuln `
-          --severity HIGH,CRITICAL `
-          --timeout 15m `
-          --format table `
-          --output /reports/trivy-image.txt `
-          --exit-code 0
-        if ($LASTEXITCODE -ne 0 -or -not (Test-Path $tableReport)) {
+        $trivyTableContainerName = "todo-app-trivy-$([Guid]::NewGuid().ToString('N'))"
+        $trivyTableExitCode = Invoke-DockerWithTimeout `
+          -ContainerName $trivyTableContainerName `
+          -TimeoutSeconds 1200 `
+          -Arguments @(
+            "run", "--rm", "--name", $trivyTableContainerName,
+            "-v", "${dir}:/reports",
+            "-v", "${trivyCacheDir}:/root/.cache/trivy",
+            "aquasec/trivy:latest",
+            "image",
+            "--input", "/reports/todo-app.tar",
+            "--scanners", "vuln",
+            "--severity", "HIGH,CRITICAL",
+            "--timeout", "15m",
+            "--format", "table",
+            "--output", "/reports/trivy-image.txt",
+            "--exit-code", "0"
+          )
+        if ($trivyTableExitCode -ne 0 -or -not (Test-Path $tableReport)) {
           Write-Warning "Trivy found vulnerabilities, but the table report could not be generated."
         }
         throw "Trivy found high or critical image vulnerabilities."
