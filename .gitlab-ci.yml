@@ -2,6 +2,7 @@ stages:
   - validate
   - test
   - security
+  - infrastructure
   - package
   - zap
   - deploy
@@ -124,6 +125,26 @@ docker_image_scan:
     paths:
       - reports/trivy/
     expire_in: 7 days
+
+terraform_aws_staging:
+  stage: infrastructure
+  timeout: 45 minutes
+  resource_group: aws-k8s-deploy
+  extends: .windows_job
+  script:
+    - powershell -ExecutionPolicy Bypass -File scripts\terraform-aws-staging.ps1 -AwsRegion "$env:AWS_REGION" -ClusterName "$env:AWS_EKS_CLUSTER_NAME" -AutoApprove
+  artifacts:
+    when: always
+    reports:
+      dotenv: reports/aws/infra.env
+    paths:
+      - reports/aws/infra.env
+    expire_in: 7 days
+  rules:
+    - if: '$RUN_AWS_STAGING == "true" || $CI_COMMIT_BRANCH == "AI-Agent"'
+      when: on_success
+      allow_failure: false
+    - when: never
 
 package_image:
   stage: package

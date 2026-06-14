@@ -16,6 +16,16 @@ $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 Set-Location $ProjectRoot
 . (Join-Path $PSScriptRoot "load-env.ps1")
 
+$DeploymentEnvPath = Join-Path $ProjectRoot "reports\aws\deployment.env"
+$DeploymentEnvDir = Split-Path $DeploymentEnvPath -Parent
+New-Item -ItemType Directory -Force -Path $DeploymentEnvDir | Out-Null
+@(
+  "APP_URL=unavailable",
+  "AWS_DEPLOY_ENV=$Environment",
+  "K8S_NAMESPACE=$Namespace",
+  "K8S_SERVICE_TYPE=$ServiceType"
+) | Set-Content -Path $DeploymentEnvPath -Encoding ascii
+
 function Assert-Command {
   param([string]$Name)
   if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
@@ -207,15 +217,12 @@ Write-Host "Expected pod layout: 1 todo-app pod + 1 mongodb pod"
 kubectl -n $Namespace get pods,svc -l app.kubernetes.io/part-of=todo-devsecops
 
 $appUrl = Resolve-AppUrl -Namespace $Namespace -ServiceType $ServiceType
-$deploymentEnvPath = Join-Path $ProjectRoot "reports\aws\deployment.env"
-$deploymentEnvDir = Split-Path $deploymentEnvPath -Parent
-New-Item -ItemType Directory -Force -Path $deploymentEnvDir | Out-Null
 @(
   "APP_URL=$appUrl",
   "AWS_DEPLOY_ENV=$Environment",
   "K8S_NAMESPACE=$Namespace",
   "K8S_SERVICE_TYPE=$ServiceType"
-) | Set-Content -Path $deploymentEnvPath -Encoding ascii
+) | Set-Content -Path $DeploymentEnvPath -Encoding ascii
 
 Write-Host "AWS EKS deployment completed: $Environment / $Namespace"
 Write-Host "APP_URL=$appUrl"
