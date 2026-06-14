@@ -1,10 +1,12 @@
+aws_region          = "eu-west-3"
+aws_profile         = ""
+project_name        = "todo-devsecops"
+cluster_name        = "todo-devsecops-eks"
+ecr_repository_name = "todo-app"
 
-aws_region      = "eu-west-3"
-aws_profile     = "default"           # <-- CHANGE if you use a named profile like "caller-root"
-project_name    = "Project-name"
-image           = "Image URI"
-container_port  = 3000
-desired_count = 1
-cpu          = 256
-memory       = 512
-healthcheck_path = "/health"
+# Staging cost controls. SPOT is cheaper but can be interrupted.
+node_capacity_type   = "SPOT"
+node_instance_types  = ["t3.small"]
+node_desired_size    = 1
+node_min_size        = 1
+node_max_size        = 2

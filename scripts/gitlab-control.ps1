@@ -69,6 +69,67 @@ function Write-PipelineSummary {
   Write-Output "URL: $webUrl"
 }
 
+function Get-PipelineJobs {
+  param([string]$Id)
+  return Invoke-GitLabJson -Method Get -Path "/pipelines/$Id/jobs?per_page=100"
+}
+
+function Wait-PipelineJob {
+  param(
+    [string]$Id,
+    [string]$Name,
+    [string[]]$Statuses,
+    [int]$TimeoutSeconds = 1800
+  )
+
+  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  while ((Get-Date) -lt $deadline) {
+    $jobs = Get-PipelineJobs -Id $Id
+    $job = $jobs | Where-Object { $_.name -eq $Name } | Sort-Object id -Descending | Select-Object -First 1
+    if ($job -and $job.status -in $Statuses) {
+      return $job
+    }
+
+    if ($job -and $job.status -in @("failed", "canceled", "skipped")) {
+      throw "Job '$Name' reached terminal status '$($job.status)' before expected status '$($Statuses -join ", ")'."
+    }
+
+    Start-Sleep -Seconds 10
+  }
+
+  throw "Timed out waiting for job '$Name' to reach status '$($Statuses -join ", ")' in pipeline #$Id."
+}
+
+function Play-GitLabJob {
+  param($Job)
+  Write-Output "Playing job '$($Job.name)' (#$($Job.id))..."
+  return Invoke-GitLabJson -Method Post -Path "/jobs/$($Job.id)/play"
+}
+
+function Wait-JobSuccess {
+  param(
+    [string]$Id,
+    [string]$Name,
+    [int]$TimeoutSeconds = 1800
+  )
+
+  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  while ((Get-Date) -lt $deadline) {
+    $jobs = Get-PipelineJobs -Id $Id
+    $job = $jobs | Where-Object { $_.name -eq $Name } | Sort-Object id -Descending | Select-Object -First 1
+    if ($job -and $job.status -eq "success") {
+      return $job
+    }
+    if ($job -and $job.status -in @("failed", "canceled", "skipped")) {
+      throw "Job '$Name' finished with status '$($job.status)'."
+    }
+
+    Start-Sleep -Seconds 15
+  }
+
+  throw "Timed out waiting for job '$Name' to finish successfully in pipeline #$Id."
+}
+
 switch ($Action) {
   "run" {
     $pipeline = Invoke-GitLabJson -Method Post -Path "/pipeline" -Body @{ ref = $Ref }
@@ -81,14 +142,26 @@ switch ($Action) {
   }
 
   "deploy" {
-    $body = @{
-      ref = $Ref
-      variables = @(
-        @{ key = "RUN_DEPLOY"; value = "true" },
-        @{ key = "DEPLOY_ENV"; value = $DeployEnv }
-      )
+    $target = $DeployEnv.ToLowerInvariant()
+    if ($target -notin @("staging", "production")) {
+      throw "DeployEnv must be 'staging' or 'production' for AWS EKS deployment."
     }
-    $pipeline = Invoke-GitLabJson -Method Post -Path "/pipeline" -Body $body
+
+    $pipeline = Invoke-GitLabJson -Method Post -Path "/pipeline" -Body @{ ref = $Ref }
+    Write-PipelineSummary $pipeline
+
+    $packageJob = Wait-PipelineJob -Id $pipeline.id -Name "aws_ecr_package" -Statuses @("manual")
+    Play-GitLabJob -Job $packageJob | Out-Null
+    Wait-JobSuccess -Id $pipeline.id -Name "aws_ecr_package"
+
+    $deployJobName = "deploy_aws_$target"
+    $deployJob = Wait-PipelineJob -Id $pipeline.id -Name $deployJobName -Statuses @("manual")
+    Play-GitLabJob -Job $deployJob | Out-Null
+    Wait-JobSuccess -Id $pipeline.id -Name $deployJobName
+
+    $pipeline = Invoke-GitLabJson -Method Get -Path "/pipelines/$($pipeline.id)"
+    Write-Output ""
+    Write-Output "AWS EKS deploy completed for '$target'."
     Write-PipelineSummary $pipeline
   }
 

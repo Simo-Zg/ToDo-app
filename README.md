@@ -9,7 +9,7 @@ Controler un pipeline DevSecOps complet depuis un bot conversationnel:
 - lancer, arreter, relancer et suivre un pipeline GitLab CI/CD;
 - consulter les logs;
 - executer les scans SAST, dependances, Docker, secrets et ZAP;
-- deployer l'application Todo;
+- deployer l'application Todo sur AWS EKS;
 - recevoir les notifications critiques sur Telegram.
 
 ## Architecture
@@ -23,6 +23,7 @@ flowchart LR
   G --> R[Local GitLab Runner - Windows]
   R --> D[Docker + MongoDB]
   R --> S[Semgrep / npm audit / Gitleaks / Trivy / ZAP]
+  R --> E[AWS ECR + EKS]
   P --> T[Telegram notifications]
 ```
 
@@ -32,6 +33,8 @@ flowchart LR
 - Database: MongoDB
 - CI/CD: GitLab CI with local Windows PowerShell runner
 - Runtime: Docker and Docker Compose
+- Cloud deployment: AWS ECR + AWS EKS + Kubernetes
+- Infrastructure as Code: Terraform for AWS staging
 - AI gateway: OpenClaw with OpenRouter
 - Chat channels: Telegram, Slack, Discord
 - Security: Semgrep, npm audit, Gitleaks, Trivy, OWASP ZAP
@@ -108,9 +111,51 @@ SEMGREP_APP_TOKEN=<optional masked token>
 SONAR_HOST_URL=http://host.docker.internal:9000
 SONAR_TOKEN=<masked token>
 SONAR_PROJECT_KEY=todo-devsecops
+AWS_REGION=eu-west-3
+AWS_ACCOUNT_ID=<optional, auto-detected by AWS STS if omitted>
+AWS_ACCESS_KEY_ID=<masked GitLab variable>
+AWS_SECRET_ACCESS_KEY=<masked GitLab variable>
+AWS_SESSION_TOKEN=<optional, only for temporary credentials>
+AWS_ECR_REPOSITORY=todo-app
+AWS_EKS_CLUSTER_NAME=todo-devsecops-eks
+K8S_SERVICE_TYPE=ClusterIP
+K8S_STAGING_NAMESPACE=todo-staging
+K8S_PRODUCTION_NAMESPACE=todo-production
 ```
 
 Do not commit real secrets. Use `.env.example` as the template.
+
+Azure is intentionally not used in this project. The previous Azure Terraform path was removed to avoid accidental billing.
+
+## AWS Kubernetes Deployment
+
+The AWS path uses EKS with exactly two application pods:
+
+- `todo-app`: 1 pod
+- `mongodb`: 1 pod
+
+Provision AWS staging infrastructure:
+
+```powershell
+cd terraform\aws-staging
+copy terraform.tfvars.example terraform.tfvars
+terraform init
+terraform plan
+terraform apply
+```
+
+Deploy from GitLab/OpenClaw:
+
+```text
+/deploy staging AI-Agent
+```
+
+The deploy command creates a normal pipeline, then plays the manual AWS jobs through the GitLab API:
+
+1. `aws_ecr_package`: build and push the Todo image to AWS ECR.
+2. `deploy_aws_staging`: deploy `todo-app` and `mongodb` to EKS.
+
+Production is available as a separate manual job named `deploy_aws_production`, but it requires production secrets and should only be used deliberately.
 
 ## Local Runner
 
@@ -139,12 +184,12 @@ https://gitlab.com/Simo-Zg/ToDo-app.git
 
 Pipeline stages:
 
-1. `validate`: install dependencies and syntax check.
+1. `validate`: syntax check without dependency installation.
 2. `test`: Jest tests.
 3. `security`: dependency scan, secret scan, SAST, Docker image scan.
 4. `package`: Docker image build and optional registry push.
 5. `zap`: OWASP ZAP scan.
-6. `deploy`: Docker Compose deployment when `/deploy` sets `RUN_DEPLOY=true`.
+6. `deploy`: AWS EKS deployment through manual jobs or `/deploy staging`.
 7. `notify`: Telegram status notification.
 
 ## Deliverables

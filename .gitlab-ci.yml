@@ -13,6 +13,8 @@ default:
 
 variables:
   APP_NAME: "todo-app"
+  AWS_ECR_REPOSITORY: "todo-app"
+  AWS_REGION: "eu-west-3"
   DEPLOY_ENV: "staging"
   DAST_TARGET_URL: "http://127.0.0.1:5000"
   GIT_DEPTH: "5"
@@ -23,6 +25,9 @@ variables:
   NPM_CONFIG_CACHE: 'D:\Gitlab-Runner\npm-cache'
   SAST_SCANNERS: "sonarqube"
   TRIVY_DB_REPOSITORY: "ghcr.io/aquasecurity/trivy-db:2"
+  K8S_SERVICE_TYPE: "ClusterIP"
+  K8S_STAGING_NAMESPACE: "todo-staging"
+  K8S_PRODUCTION_NAMESPACE: "todo-production"
   ZAP_TIMEOUT_SECONDS: "180"
 
 workflow:
@@ -157,7 +162,27 @@ package_image:
       }
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'
-    - if: '$RUN_DEPLOY == "true"'
+
+aws_ecr_package:
+  stage: package
+  timeout: 15 minutes
+  resource_group: aws-k8s-deploy
+  extends: .windows_job
+  script:
+    - powershell -ExecutionPolicy Bypass -File scripts\aws-ecr-push.ps1 -AwsRegion "$env:AWS_REGION" -RepositoryName "$env:AWS_ECR_REPOSITORY" -ImageTag "$env:CI_COMMIT_SHORT_SHA"
+  artifacts:
+    reports:
+      dotenv: reports/aws/deploy.env
+    paths:
+      - reports/aws/deploy.env
+    expire_in: 7 days
+  rules:
+    - if: '$RUN_AWS_DEPLOY == "true"'
+    - if: '$RUN_AWS_STAGING == "true"'
+    - if: '$RUN_AWS_PRODUCTION == "true"'
+    - if: '$CI_COMMIT_BRANCH'
+      when: manual
+      allow_failure: true
 
 zap_scan:
   stage: zap
@@ -192,20 +217,41 @@ zap_scan:
     expire_in: 7 days
   when: always
 
-deploy_local:
+deploy_aws_staging:
   stage: deploy
+  timeout: 10 minutes
+  resource_group: aws-k8s-deploy
   extends: .windows_job
+  needs:
+    - job: aws_ecr_package
+      artifacts: true
   script:
-    - |
-      if (-not (Test-Path ".env")) {
-        powershell -ExecutionPolicy Bypass -File scripts\install.ps1 -ForceEnv -SkipNpmInstall
-      }
-      powershell -ExecutionPolicy Bypass -File scripts\deploy-local.ps1 -Environment "$env:DEPLOY_ENV"
+    - powershell -ExecutionPolicy Bypass -File scripts\deploy-aws-k8s.ps1 -Environment staging -AwsRegion "$env:AWS_REGION" -ClusterName "$env:AWS_EKS_CLUSTER_NAME" -Namespace "$env:K8S_STAGING_NAMESPACE" -Image "$env:K8S_IMAGE" -ServiceType "$env:K8S_SERVICE_TYPE"
   environment:
-    name: $DEPLOY_ENV
-    url: http://127.0.0.1:5000
+    name: aws-staging
   rules:
-    - if: '$RUN_DEPLOY == "true"'
+    - if: '$RUN_AWS_DEPLOY == "true" || $RUN_AWS_STAGING == "true"'
+    - if: '$CI_COMMIT_BRANCH'
+      when: manual
+      allow_failure: true
+
+deploy_aws_production:
+  stage: deploy
+  timeout: 10 minutes
+  resource_group: aws-k8s-deploy
+  extends: .windows_job
+  needs:
+    - job: aws_ecr_package
+      artifacts: true
+  script:
+    - powershell -ExecutionPolicy Bypass -File scripts\deploy-aws-k8s.ps1 -Environment production -AwsRegion "$env:AWS_REGION" -ClusterName "$env:AWS_EKS_CLUSTER_NAME" -Namespace "$env:K8S_PRODUCTION_NAMESPACE" -Image "$env:K8S_IMAGE" -ServiceType "$env:K8S_SERVICE_TYPE" -RequireSecrets
+  environment:
+    name: aws-production
+  rules:
+    - if: '$RUN_AWS_PRODUCTION == "true"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      when: manual
+      allow_failure: true
 
 notify_pipeline:
   stage: notify

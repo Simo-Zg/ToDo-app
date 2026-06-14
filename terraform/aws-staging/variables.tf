@@ -1,80 +1,65 @@
 variable "aws_region" {
   type        = string
-  description = "AWS region"
+  description = "AWS region for the EKS staging cluster."
+  default     = "eu-west-3"
 }
 
 variable "aws_profile" {
   type        = string
-  description = "AWS CLI profile name (from ~/.aws/config). Use 'default' if you don't use profiles."
-  default     = "default"
+  description = "Optional local AWS CLI profile. Leave empty in CI when using AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY."
+  default     = ""
 }
 
 variable "project_name" {
   type        = string
-  description = "Prefix for naming resources"
+  description = "Prefix for AWS resource names."
+  default     = "todo-devsecops"
 }
 
-variable "container_port" {
-  type        = number
-  description = "Port exposed by the container"
-  default     = 3000
+variable "cluster_name" {
+  type        = string
+  description = "EKS cluster name. Defaults to <project_name>-eks."
+  default     = ""
 }
 
-variable "desired_count" {
+variable "vpc_cidr" {
+  type        = string
+  description = "CIDR block for the staging VPC."
+  default     = "10.42.0.0/16"
+}
+
+variable "node_instance_types" {
+  type        = list(string)
+  description = "Managed node group instance types. Keep small for staging costs."
+  default     = ["t3.small"]
+}
+
+variable "node_capacity_type" {
+  type        = string
+  description = "EKS node capacity type: ON_DEMAND or SPOT."
+  default     = "SPOT"
+}
+
+variable "node_desired_size" {
   type        = number
-  description = "How many tasks to run"
+  description = "Desired number of worker nodes."
   default     = 1
 }
 
-variable "cpu" {
+variable "node_min_size" {
   type        = number
-  description = "Fargate CPU units (256, 512, 1024, ...)"
-  default     = 256
+  description = "Minimum number of worker nodes."
+  default     = 1
 }
 
-variable "memory" {
+variable "node_max_size" {
   type        = number
-  description = "Fargate memory (512, 1024, 2048, ...)"
-  default     = 512
+  description = "Maximum number of worker nodes."
+  default     = 2
 }
 
-variable "healthcheck_path" {
+variable "ecr_repository_name" {
   type        = string
-  description = "ALB healthcheck path"
-  default     = "/health"
-}
-
-variable "image" {
-  type        = string
-  description = "Full container image URI (ECR or DockerHub), including tag"
-}
-
-variable "mongo_db_uri" {
-  type        = string
-  description = "MongoDB Connection URI"
-  sensitive   = true
-}
-
-variable "jwt_secret" {
-  type        = string
-  description = "JSON Web Token string"
-  sensitive   = true
-}
-
-variable "jwt_refresh_secret" {
-  type        = string
-  description = "JSON Web Token Refresh string"
-  sensitive   = true
-}
-
-variable "secret_password" {
-  type        = string
-  description = "Secret password for Admin creation"
-  sensitive   = true
-}
-
-variable "aes_key" {
-  type        = string
-  description = "64-character hex key for symmetric AES encryption"
-  sensitive   = true
+  description = "ECR repository used by the CI deployment stage."
+  default     = "todo-app"
 }

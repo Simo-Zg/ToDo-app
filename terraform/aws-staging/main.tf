@@ -1,6 +1,13 @@
-# ===== VPC (created by Terraform) =====
+locals {
+  cluster_name = var.cluster_name != "" ? var.cluster_name : "${var.project_name}-eks"
+}
+
+data "aws_availability_zones" "available" {
+  state = "available"
+}
+
 resource "aws_vpc" "this" {
-  cidr_block           = "10.0.0.0/16"
+  cidr_block           = var.vpc_cidr
   enable_dns_support   = true
   enable_dns_hostnames = true
 
@@ -17,11 +24,6 @@ resource "aws_internet_gateway" "this" {
   }
 }
 
-# Use 2 AZs
-data "aws_availability_zones" "available" {
-  state = "available"
-}
-
 resource "aws_subnet" "public" {
   count                   = 2
   vpc_id                  = aws_vpc.this.id
@@ -30,7 +32,9 @@ resource "aws_subnet" "public" {
   map_public_ip_on_launch = true
 
   tags = {
-    Name = "${var.project_name}-public-${count.index}"
+    Name                                          = "${var.project_name}-public-${count.index + 1}"
+    "kubernetes.io/cluster/${local.cluster_name}" = "shared"
+    "kubernetes.io/role/elb"                      = "1"
   }
 }
 
@@ -53,183 +57,111 @@ resource "aws_route_table_association" "public" {
   route_table_id = aws_route_table.public.id
 }
 
-data "aws_region" "current" {}
-
-data "aws_iam_policy_document" "ecs_task_assume_role" {
+data "aws_iam_policy_document" "eks_cluster_assume_role" {
   statement {
     effect = "Allow"
     principals {
       type        = "Service"
-      identifiers = ["ecs-tasks.amazonaws.com"]
+      identifiers = ["eks.amazonaws.com"]
     }
     actions = ["sts:AssumeRole"]
   }
 }
 
-resource "aws_ecs_cluster" "this" {
-  name = "${var.project_name}-cluster"
+resource "aws_iam_role" "eks_cluster" {
+  name               = "${var.project_name}-eks-cluster-role"
+  assume_role_policy = data.aws_iam_policy_document.eks_cluster_assume_role.json
 }
 
-# CloudWatch logs for container
-resource "aws_cloudwatch_log_group" "app" {
-  name              = "/ecs/${var.project_name}"
-  retention_in_days = 14
+resource "aws_iam_role_policy_attachment" "eks_cluster" {
+  role       = aws_iam_role.eks_cluster.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
 }
 
-# IAM role used by ECS agent to pull image + write logs
-resource "aws_iam_role" "task_execution" {
-  name               = "${var.project_name}-task-exec"
-  assume_role_policy = data.aws_iam_policy_document.ecs_task_assume_role.json
-}
+resource "aws_eks_cluster" "this" {
+  name     = local.cluster_name
+  role_arn = aws_iam_role.eks_cluster.arn
 
-resource "aws_iam_role_policy_attachment" "task_exec_attach" {
-  role       = aws_iam_role.task_execution.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
-}
-
-# Security Group for ALB (public)
-resource "aws_security_group" "alb" {
-  name        = "${var.project_name}-alb-sg"
-  description = "ALB SG"
-  vpc_id      = aws_vpc.this.id
-
-  ingress {
-    description = "HTTP from internet"
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+  vpc_config {
+    subnet_ids              = aws_subnet.public[*].id
+    endpoint_private_access = false
+    endpoint_public_access  = true
   }
 
-  egress {
-    description = "All outbound"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+  depends_on = [
+    aws_iam_role_policy_attachment.eks_cluster
+  ]
+
+  tags = {
+    Name = local.cluster_name
   }
 }
 
-# Security Group for ECS tasks (only from ALB)
-resource "aws_security_group" "ecs_tasks" {
-  name        = "${var.project_name}-tasks-sg"
-  description = "Tasks SG"
-  vpc_id      = aws_vpc.this.id
-
-  ingress {
-    description     = "App port from ALB only"
-    from_port       = var.container_port
-    to_port         = var.container_port
-    protocol        = "tcp"
-    security_groups = [aws_security_group.alb.id]
-  }
-
-  egress {
-    description = "All outbound"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-}
-
-# ALB
-resource "aws_lb" "this" {
-  name               = "${var.project_name}-alb"
-  internal           = false
-  load_balancer_type = "application"
-  security_groups    = [aws_security_group.alb.id]
-  subnets            = aws_subnet.public[*].id
-}
-
-resource "aws_lb_target_group" "this" {
-  name        = "${var.project_name}-tg"
-  port        = var.container_port
-  protocol    = "HTTP"
-  vpc_id      = aws_vpc.this.id
-  target_type = "ip"
-
-  health_check {
-    path                = var.healthcheck_path
-    healthy_threshold   = 2
-    unhealthy_threshold = 2
-    timeout             = 5
-    interval            = 15
-    matcher             = "200-399"
-  }
-}
-
-resource "aws_lb_listener" "http" {
-  load_balancer_arn = aws_lb.this.arn
-  port              = 80
-  protocol          = "HTTP"
-
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.this.arn
-  }
-}
-
-# Task definition
-resource "aws_ecs_task_definition" "this" {
-  family                   = "${var.project_name}-task"
-  network_mode             = "awsvpc"
-  requires_compatibilities = ["FARGATE"]
-  cpu                      = tostring(var.cpu)
-  memory                   = tostring(var.memory)
-  execution_role_arn       = aws_iam_role.task_execution.arn
-
-  container_definitions = jsonencode([
-    {
-      name      = "app"
-      image     = var.image
-      essential = true
-      portMappings = [
-        {
-          containerPort = var.container_port
-          hostPort      = var.container_port
-          protocol      = "tcp"
-        }
-      ]
-      environment = [
-        { name = "PORT", value = tostring(var.container_port) },
-        { name = "MONGO_DB_URI", value = var.mongo_db_uri },
-        { name = "JWT_SECRET", value = var.jwt_secret },
-        { name = "JWT_REFRESH_SECRET", value = var.jwt_refresh_secret },
-        { name = "SECRET_PASSWORD", value = var.secret_password },
-        { name = "AES_KEY", value = var.aes_key }
-      ]
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          awslogs-group         = aws_cloudwatch_log_group.app.name
-          awslogs-region        = var.aws_region
-          awslogs-stream-prefix = "ecs"
-        }
-      }
+data "aws_iam_policy_document" "eks_node_assume_role" {
+  statement {
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["ec2.amazonaws.com"]
     }
-  ])
+    actions = ["sts:AssumeRole"]
+  }
 }
 
-# ECS Service
-resource "aws_ecs_service" "this" {
-  name            = "${var.project_name}-service"
-  cluster         = aws_ecs_cluster.this.id
-  task_definition = aws_ecs_task_definition.this.arn
-  desired_count   = var.desired_count
-  launch_type     = "FARGATE"
+resource "aws_iam_role" "eks_node" {
+  name               = "${var.project_name}-eks-node-role"
+  assume_role_policy = data.aws_iam_policy_document.eks_node_assume_role.json
+}
 
-  network_configuration {
-    subnets          = aws_subnet.public[*].id
-    security_groups  = [aws_security_group.ecs_tasks.id]
-    assign_public_ip = true
+resource "aws_iam_role_policy_attachment" "eks_worker_node" {
+  role       = aws_iam_role.eks_node.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
+}
+
+resource "aws_iam_role_policy_attachment" "eks_cni" {
+  role       = aws_iam_role.eks_node.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
+}
+
+resource "aws_iam_role_policy_attachment" "ecr_read_only" {
+  role       = aws_iam_role.eks_node.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+}
+
+resource "aws_eks_node_group" "this" {
+  cluster_name    = aws_eks_cluster.this.name
+  node_group_name = "${var.project_name}-nodes"
+  node_role_arn   = aws_iam_role.eks_node.arn
+  subnet_ids      = aws_subnet.public[*].id
+  instance_types  = var.node_instance_types
+  capacity_type   = var.node_capacity_type
+
+  scaling_config {
+    desired_size = var.node_desired_size
+    min_size     = var.node_min_size
+    max_size     = var.node_max_size
   }
 
-  load_balancer {
-    target_group_arn = aws_lb_target_group.this.arn
-    container_name   = "app"
-    container_port   = var.container_port
+  depends_on = [
+    aws_iam_role_policy_attachment.eks_worker_node,
+    aws_iam_role_policy_attachment.eks_cni,
+    aws_iam_role_policy_attachment.ecr_read_only
+  ]
+
+  tags = {
+    Name = "${var.project_name}-nodes"
+  }
+}
+
+resource "aws_ecr_repository" "todo_app" {
+  name                 = var.ecr_repository_name
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
   }
 
-  depends_on = [aws_lb_listener.http]
+  tags = {
+    Name = var.ecr_repository_name
+  }
 }

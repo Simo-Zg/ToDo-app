@@ -23,4 +23,5 @@ reports/
 .trivy-cache/
 coverage/
 *.tmp
-docs/
+docs/*
+!docs/DEMO_SCRIPT.md
