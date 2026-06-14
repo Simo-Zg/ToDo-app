@@ -97,11 +97,6 @@ semgrep_scan:
     paths:
       - reports/semgrep/
     expire_in: 7 days
-  rules:
-    - if: '$RUN_SEMGREP == "true"'
-      when: on_success
-    - when: manual
-      allow_failure: true
 
 docker_image_scan:
   stage: security
@@ -161,11 +156,7 @@ zap_dast_scan:
     paths:
       - reports/zap/
     expire_in: 7 days
-  rules:
-    - if: '$RUN_ZAP == "true"'
-      when: always
-    - when: manual
-      allow_failure: true
+  when: always
 
 deploy_local:
   stage: deploy

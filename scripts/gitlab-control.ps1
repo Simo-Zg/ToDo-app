@@ -37,7 +37,8 @@ function Invoke-GitLabJson {
 
   $uri = "$BaseUrl/api/v4/projects/$EncodedProjectId$Path"
   if ($Body) {
-    return Invoke-RestMethod -Method $Method -Uri $uri -Headers $Headers -Body $Body
+    $jsonBody = $Body | ConvertTo-Json -Depth 8
+    return Invoke-RestMethod -Method $Method -Uri $uri -Headers $Headers -ContentType "application/json" -Body $jsonBody
   }
   return Invoke-RestMethod -Method $Method -Uri $uri -Headers $Headers
 }
@@ -75,21 +76,17 @@ switch ($Action) {
   }
 
   "scan" {
-    $body = @{
-      ref = $Ref
-      "variables[RUN_ZAP]" = "true"
-      "variables[RUN_SEMGREP]" = "true"
-      "variables[SECURITY_ONLY]" = "true"
-    }
-    $pipeline = Invoke-GitLabJson -Method Post -Path "/pipeline" -Body $body
+    $pipeline = Invoke-GitLabJson -Method Post -Path "/pipeline" -Body @{ ref = $Ref }
     Write-PipelineSummary $pipeline
   }
 
   "deploy" {
     $body = @{
       ref = $Ref
-      "variables[RUN_DEPLOY]" = "true"
-      "variables[DEPLOY_ENV]" = $DeployEnv
+      variables = @(
+        @{ key = "RUN_DEPLOY"; value = "true" },
+        @{ key = "DEPLOY_ENV"; value = $DeployEnv }
+      )
     }
     $pipeline = Invoke-GitLabJson -Method Post -Path "/pipeline" -Body $body
     Write-PipelineSummary $pipeline
