@@ -106,7 +106,7 @@ TELEGRAM_BOT_TOKEN=<telegram bot token>
 TELEGRAM_CHAT_ID=<authorized chat id>
 DAST_TARGET_URL=http://127.0.0.1:5000
 ZAP_PATH=<optional full path to zap.bat>
-SAST_SCANNERS=semgrep,sonarqube
+SAST_SCANNERS=semgrep
 SEMGREP_APP_TOKEN=<optional masked token>
 SONAR_HOST_URL=http://host.docker.internal:9000
 SONAR_TOKEN=<masked token>
@@ -131,7 +131,6 @@ Required sensitive CI/CD variables:
 - `GITLAB_API_TOKEN`: GitLab token used by OpenClaw commands to create, retry, cancel, inspect and play pipelines.
 - `TELEGRAM_BOT_TOKEN`: Telegram notification bot token.
 - `TELEGRAM_CHAT_ID`: authorized Telegram chat id for notifications.
-- `SONAR_TOKEN`: SonarQube scan token because `SAST_SCANNERS=sonarqube` is enabled.
 - `JWT_SECRET`: application access-token secret for Kubernetes deployment.
 - `JWT_REFRESH_SECRET`: application refresh-token secret for Kubernetes deployment.
 - `SECRET_PASSWORD`: application secret password for Kubernetes deployment.
@@ -153,6 +152,7 @@ Optional CI/CD variables:
 - `AWS_SESSION_TOKEN`: only for temporary AWS credentials.
 - `AWS_ACCOUNT_ID`: optional because the ECR script can read it through AWS STS.
 - `SEMGREP_APP_TOKEN`: optional unless Semgrep Cloud is required.
+- `SONAR_TOKEN`: required only when SonarQube is explicitly re-enabled.
 - `SONAR_HOST_URL`: defaults to `http://host.docker.internal:9000`.
 - `SONAR_PROJECT_KEY`: defaults to `todo-devsecops`.
 - `DAST_TARGET_URL`: defaults to `http://127.0.0.1:5000`.

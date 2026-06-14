@@ -23,7 +23,7 @@ variables:
   NPM_CONFIG_PROGRESS: "false"
   NPM_CONFIG_PREFER_OFFLINE: "true"
   NPM_CONFIG_CACHE: 'D:\Gitlab-Runner\npm-cache'
-  SAST_SCANNERS: "sonarqube"
+  SAST_SCANNERS: "semgrep"
   TRIVY_DB_REPOSITORY: "ghcr.io/aquasecurity/trivy-db:2"
   K8S_SERVICE_TYPE: "LoadBalancer"
   K8S_STAGING_NAMESPACE: "todo-staging"
@@ -91,7 +91,7 @@ sast_scan:
   resource_group: local-docker-scanners
   extends: .windows_job
   script:
-    - powershell -ExecutionPolicy Bypass -File scripts\security-scan.ps1 -Mode sast -SastScanners "$env:SAST_SCANNERS"
+    - powershell -ExecutionPolicy Bypass -File scripts\security-scan.ps1 -Mode sast -SastScanners "semgrep"
   artifacts:
     when: always
     paths:
