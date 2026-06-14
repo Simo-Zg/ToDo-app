@@ -40,6 +40,67 @@ function Get-SecretValue {
   return $value
 }
 
+function Get-KubernetesValue {
+  param(
+    [string]$Namespace,
+    [string[]]$Arguments
+  )
+
+  $output = & kubectl -n $Namespace @Arguments 2>$null
+  if ($LASTEXITCODE -ne 0) {
+    return ""
+  }
+  return (($output | Out-String).Trim())
+}
+
+function Resolve-AppUrl {
+  param(
+    [string]$Namespace,
+    [string]$ServiceType
+  )
+
+  if ($ServiceType -eq "LoadBalancer") {
+    Write-Host "Waiting for AWS LoadBalancer hostname..."
+    for ($attempt = 1; $attempt -le 60; $attempt++) {
+      $hostName = Get-KubernetesValue -Namespace $Namespace -Arguments @(
+        "get", "service", "todo-app-service",
+        "-o", "jsonpath={.status.loadBalancer.ingress[0].hostname}"
+      )
+      if (-not [string]::IsNullOrWhiteSpace($hostName)) {
+        return "http://$hostName"
+      }
+
+      $ip = Get-KubernetesValue -Namespace $Namespace -Arguments @(
+        "get", "service", "todo-app-service",
+        "-o", "jsonpath={.status.loadBalancer.ingress[0].ip}"
+      )
+      if (-not [string]::IsNullOrWhiteSpace($ip)) {
+        return "http://$ip"
+      }
+
+      Start-Sleep -Seconds 10
+    }
+
+    throw "AWS LoadBalancer endpoint was not assigned within 10 minutes."
+  }
+
+  if ($ServiceType -eq "NodePort") {
+    $nodePort = Get-KubernetesValue -Namespace $Namespace -Arguments @(
+      "get", "service", "todo-app-service",
+      "-o", "jsonpath={.spec.ports[0].nodePort}"
+    )
+    $nodeIp = (& kubectl get nodes -o "jsonpath={.items[0].status.addresses[?(@.type=='ExternalIP')].address}" 2>$null | Out-String).Trim()
+    if ([string]::IsNullOrWhiteSpace($nodeIp)) {
+      $nodeIp = (& kubectl get nodes -o "jsonpath={.items[0].status.addresses[?(@.type=='InternalIP')].address}" 2>$null | Out-String).Trim()
+    }
+    if (-not [string]::IsNullOrWhiteSpace($nodeIp) -and -not [string]::IsNullOrWhiteSpace($nodePort)) {
+      return "http://$nodeIp`:$nodePort"
+    }
+  }
+
+  return "http://todo-app-service.$Namespace.svc.cluster.local"
+}
+
 Assert-Command aws
 Assert-Command kubectl
 
@@ -145,6 +206,16 @@ Write-Host ""
 Write-Host "Expected pod layout: 1 todo-app pod + 1 mongodb pod"
 kubectl -n $Namespace get pods,svc -l app.kubernetes.io/part-of=todo-devsecops
 
-& (Join-Path $PSScriptRoot "notify-telegram.ps1") -Message "AWS EKS deployment '$Environment' completed in namespace '$Namespace'. Image: $Image"
+$appUrl = Resolve-AppUrl -Namespace $Namespace -ServiceType $ServiceType
+$deploymentEnvPath = Join-Path $ProjectRoot "reports\aws\deployment.env"
+$deploymentEnvDir = Split-Path $deploymentEnvPath -Parent
+New-Item -ItemType Directory -Force -Path $deploymentEnvDir | Out-Null
+@(
+  "APP_URL=$appUrl",
+  "AWS_DEPLOY_ENV=$Environment",
+  "K8S_NAMESPACE=$Namespace",
+  "K8S_SERVICE_TYPE=$ServiceType"
+) | Set-Content -Path $deploymentEnvPath -Encoding ascii
 
 Write-Host "AWS EKS deployment completed: $Environment / $Namespace"
+Write-Host "APP_URL=$appUrl"

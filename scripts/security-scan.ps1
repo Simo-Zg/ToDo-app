@@ -278,21 +278,29 @@ if ((Should-Run "sast") -or (Should-Run "sonarqube")) {
       $projectKey = "todo-devsecops"
     }
 
+    $propertiesPath = Join-Path $ProjectRoot "sonar-project.properties"
+    @(
+      "sonar.projectKey=$projectKey",
+      "sonar.projectName=Todo-DevSecOps",
+      "sonar.sources=.",
+      "sonar.exclusions=node_modules/**,reports/**,coverage/**,.git/**,docs/FINAL_REPORT.html"
+    ) | Set-Content -Path $propertiesPath -Encoding ascii
+
     Ensure-DockerImage "sonarsource/sonar-scanner-cli:latest"
 
-    & docker run --rm `
-      -e "SONAR_HOST_URL=$sonarHostUrl" `
-      -e "SONAR_TOKEN=$env:SONAR_TOKEN" `
-      -e "SONAR_SCANNER_OPTS=-Dsonar.projectBaseDir=/usr/src" `
-      -v "${ProjectRoot}:/usr/src" `
-      sonarsource/sonar-scanner-cli:latest `
-      -Dsonar.projectKey=$projectKey `
-      -Dsonar.projectName=Todo-DevSecOps `
-      -Dsonar.sources=. `
-      -Dsonar.exclusions=node_modules/**,reports/**,coverage/**,.git/**,docs/FINAL_REPORT.html
+    try {
+      & docker run --rm `
+        -e "SONAR_HOST_URL=$sonarHostUrl" `
+        -e "SONAR_TOKEN=$env:SONAR_TOKEN" `
+        -e "SONAR_SCANNER_OPTS=-Dsonar.projectBaseDir=/usr/src" `
+        -v "${ProjectRoot}:/usr/src" `
+        sonarsource/sonar-scanner-cli:latest
 
-    if ($LASTEXITCODE -ne 0) {
-      throw "SonarQube scan failed or quality gate rejected the analysis."
+      if ($LASTEXITCODE -ne 0) {
+        throw "SonarQube scan failed or quality gate rejected the analysis."
+      }
+    } finally {
+      Remove-Item -LiteralPath $propertiesPath -Force -ErrorAction SilentlyContinue
     }
 
     $summaryPath = Join-Path $dir "sonarqube-summary.txt"
@@ -403,8 +411,6 @@ if (Should-Run "zap") {
 }
 
 if ($Failures.Count -gt 0) {
-  $message = "DevSecOps scan failed:`n" + ($Failures -join "`n")
-  & (Join-Path $PSScriptRoot "notify-telegram.ps1") -Message $message
   throw ($Failures -join "; ")
 }
 

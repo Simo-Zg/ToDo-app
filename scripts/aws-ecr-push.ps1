@@ -95,7 +95,7 @@ New-Item -ItemType Directory -Force -Path $dotEnvDir | Out-Null
   "AWS_ECR_REPOSITORY=$RepositoryName",
   "AWS_REGION=$AwsRegion",
   "AWS_ACCOUNT_ID=$AwsAccountId"
-) | Set-Content -Path $DotEnvPath
+) | Set-Content -Path $DotEnvPath -Encoding ascii
 
 Write-Host "ECR image pushed: $imageUri"
 Write-Host "Dotenv artifact: $DotEnvPath"

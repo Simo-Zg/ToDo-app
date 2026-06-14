@@ -25,7 +25,7 @@ variables:
   NPM_CONFIG_CACHE: 'D:\Gitlab-Runner\npm-cache'
   SAST_SCANNERS: "sonarqube"
   TRIVY_DB_REPOSITORY: "ghcr.io/aquasecurity/trivy-db:2"
-  K8S_SERVICE_TYPE: "ClusterIP"
+  K8S_SERVICE_TYPE: "LoadBalancer"
   K8S_STAGING_NAMESPACE: "todo-staging"
   K8S_PRODUCTION_NAMESPACE: "todo-production"
   ZAP_TIMEOUT_SECONDS: "180"
@@ -160,7 +160,7 @@ aws_ecr_package:
       - reports/aws/deploy.env
     expire_in: 7 days
   rules:
-    - if: '$RUN_AWS_STAGING == "true" || $RUN_AWS_PRODUCTION == "true"'
+    - if: '$RUN_AWS_STAGING == "true" || $RUN_AWS_PRODUCTION == "true" || $CI_COMMIT_BRANCH == "AI-Agent"'
       when: on_success
       allow_failure: false
     - when: never
@@ -200,11 +200,18 @@ deploy_aws_staging:
   dependencies:
     - aws_ecr_package
   script:
-    - powershell -ExecutionPolicy Bypass -File scripts\deploy-aws-k8s.ps1 -Environment staging -AwsRegion "$env:AWS_REGION" -ClusterName "$env:AWS_EKS_CLUSTER_NAME" -Namespace "$env:K8S_STAGING_NAMESPACE" -Image "$env:K8S_IMAGE" -ServiceType "$env:K8S_SERVICE_TYPE" -RequireSecrets
+    - powershell -ExecutionPolicy Bypass -File scripts\deploy-aws-k8s.ps1 -Environment staging -AwsRegion "$env:AWS_REGION" -ClusterName "$env:AWS_EKS_CLUSTER_NAME" -Namespace "$env:K8S_STAGING_NAMESPACE" -Image "$env:K8S_IMAGE" -ServiceType "LoadBalancer" -RequireSecrets
   environment:
     name: aws-staging
+    url: $APP_URL
+  artifacts:
+    reports:
+      dotenv: reports/aws/deployment.env
+    paths:
+      - reports/aws/deployment.env
+    expire_in: 7 days
   rules:
-    - if: '$RUN_AWS_STAGING == "true"'
+    - if: '$RUN_AWS_STAGING == "true" || $CI_COMMIT_BRANCH == "AI-Agent"'
       when: on_success
       allow_failure: false
     - when: never
@@ -220,6 +227,13 @@ deploy_aws_production:
     - powershell -ExecutionPolicy Bypass -File scripts\deploy-aws-k8s.ps1 -Environment production -AwsRegion "$env:AWS_REGION" -ClusterName "$env:AWS_EKS_CLUSTER_NAME" -Namespace "$env:K8S_PRODUCTION_NAMESPACE" -Image "$env:K8S_IMAGE" -ServiceType "$env:K8S_SERVICE_TYPE" -RequireSecrets
   environment:
     name: aws-production
+    url: $APP_URL
+  artifacts:
+    reports:
+      dotenv: reports/aws/deployment.env
+    paths:
+      - reports/aws/deployment.env
+    expire_in: 7 days
   rules:
     - if: '$RUN_AWS_PRODUCTION == "true"'
       when: on_success

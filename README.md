@@ -118,7 +118,7 @@ AWS_SECRET_ACCESS_KEY=<masked GitLab variable>
 AWS_SESSION_TOKEN=<optional, only for temporary credentials>
 AWS_ECR_REPOSITORY=todo-app
 AWS_EKS_CLUSTER_NAME=todo-devsecops-eks
-K8S_SERVICE_TYPE=ClusterIP
+K8S_SERVICE_TYPE=LoadBalancer
 K8S_STAGING_NAMESPACE=todo-staging
 K8S_PRODUCTION_NAMESPACE=todo-production
 ```
@@ -185,6 +185,8 @@ Deploy from GitLab/OpenClaw:
 ```text
 /deploy staging AI-Agent
 ```
+
+On the `AI-Agent` branch, AWS staging deployment is part of the normal pipeline. The staging job uses a Kubernetes `LoadBalancer`, writes `APP_URL` to `reports/aws/deployment.env`, and GitLab uses it as the environment URL.
 
 The deploy command creates a deploy pipeline with AWS variables enabled. AWS jobs are required in that pipeline, so an AWS package or deployment failure fails the pipeline:
 
